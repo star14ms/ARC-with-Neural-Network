@@ -1,5 +1,5 @@
 from data import ARCDataset
-from utils import plot_task
+from utils.visualize import plot_task
 
 from constants import COLORS
 

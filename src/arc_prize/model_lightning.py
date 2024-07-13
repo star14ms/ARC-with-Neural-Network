@@ -41,17 +41,12 @@ class ARCSameShapeConvL(LightningModuleBase):
         return self.model(inputs)
 
     def training_step(self, batches):
-        # TP, FP, TN, FN = 0, 0, 0, 0
         total_loss = 0
         total = len(batches)
         opt = self.optimizers()
 
         # Process each batch
         for i, (x, t) in enumerate(batches):
-          
-            print(len(x), len(t))
-            breakpoint()
-
             # forward + backward + optimize
             y = self.model(x)
             y_prob = F.softmax(y)

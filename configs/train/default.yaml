@@ -1,0 +1,5 @@
+name: "default"
+
+params:
+  epoch: 1
+  lr: 0.01

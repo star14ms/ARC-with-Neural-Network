@@ -1,0 +1,4 @@
+name: "ARCSameShapeConv"
+
+params:
+  input_size: [5, 5]

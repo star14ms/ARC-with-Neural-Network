@@ -3,7 +3,6 @@ from torch.utils.data import Dataset, DataLoader
 import json
 from pytorch_lightning import LightningDataModule
 
-from utils import plot_task
 
 
 class ARCDataset(Dataset):
@@ -40,6 +39,21 @@ class ARCDataset(Dataset):
         return list(self.challenges.keys())[idx]
 
 
+class ARCDataLoader(DataLoader):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+    def __iter__(self):
+        for batch in super().__iter__():
+            xs, ts = batch
+            xs = [x.squeeze(0) for x in xs]
+            ts = [t.squeeze(0) for t in ts]
+            yield list(zip(xs, ts))
+            
+    def __len__(self):
+        return super().__len__()
+
+
 class ARCDataModule(LightningDataModule):
     def __init__(self, base_path='./data/arc-prize-2024/', batch_size=1):
         super().__init__()
@@ -59,25 +73,26 @@ class ARCDataModule(LightningDataModule):
     def setup(self, stage=None):
         # Assign train/val datasets for use in dataloaders
         if stage == 'fit' or stage is None:
-            self.train_dataset = ARCDataset(challenges, solutions, train=True)
-            self.val_dataset = ARCDataset(challenges, solutions, train=False)
+            self.train_dataset = ARCDataset(self.challenges_train, self.solutions_train, train=True)
+            self.val_dataset = ARCDataset(self.challenges_val, self.solutions_val, train=False)
 
         # Assign test dataset for use in dataloader(s)
         if stage == 'test' or stage is None:
-            self.test_dataset = ARCDataset(challenges, solutions, train=False)
+            self.test_dataset = ARCDataset(self.challenges_test, self.solutions_test, train=False)
 
     def train_dataloader(self):
-        return DataLoader(self.train_dataset, batch_size=self.batch_size)
+        return ARCDataLoader(self.train_dataset, batch_size=self.batch_size)
 
     def val_dataloader(self):
-        return DataLoader(self.val_dataset, batch_size=self.batch_size)
+        return ARCDataLoader(self.val_dataset, batch_size=self.batch_size)
 
     def test_dataloader(self):
-        return DataLoader(self.test_dataset, batch_size=self.batch_size)
+        return ARCDataLoader(self.test_dataset, batch_size=self.batch_size)
 
 
 if __name__ == '__main__':
     from rich import print
+    from utils.visualize import plot_task
 
     base_path = './data/arc-prize-2024/'
 

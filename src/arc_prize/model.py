@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-from model_custom import Conv2dFixedKernel
+from arc_prize.model_custom import Conv2dFixedKernel
 
 
 class ARCSameShapeConv(nn.Module):

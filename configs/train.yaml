@@ -1,0 +1,4 @@
+defaults:
+  - data: ARCSameShapeConv
+  - model: ARCSameShapeConv
+  - train: default
