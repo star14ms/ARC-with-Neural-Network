@@ -1,7 +1,9 @@
 import matplotlib.pyplot as plt
 from matplotlib import colors
 
-  
+from constants import COLORS
+
+
 def plot_task(dataset_train, dataset_test, idx):
     """Plots the train and test pairs of a specified task, using the ARC color scheme."""
     task_key = dataset_train.task_key(idx)  # Get the task ID
@@ -15,8 +17,7 @@ def plot_task(dataset_train, dataset_test, idx):
     fig, axs = plt.subplots(2, num_total, figsize=(3*num_total, 3*2))
     plt.suptitle(f'Set #{idx}, {task_key}:', fontsize=20, fontweight='bold', y=0.96)
     
-    cmap = colors.ListedColormap(['#000000', '#0074D9', '#FF4136', '#2ECC40', '#FFDC00',
-                                  '#AAAAAA', '#F012BE', '#FF851B', '#7FDBFF', '#870C25'])
+    cmap = colors.ListedColormap(COLORS)
     norm = colors.Normalize(vmin=0, vmax=9)
 
     for j in range(num_train):
@@ -25,7 +26,10 @@ def plot_task(dataset_train, dataset_test, idx):
 
     for j in range(num_test):
         plot_one(test_inputs[j], axs[0, j + num_train], 'test', 'input', cmap, norm)
-        plot_one(test_outputs[j], axs[1, j + num_train], 'test', 'output', cmap, norm)
+        if test_outputs != []:
+            plot_one(test_outputs[j], axs[1, j + num_train], 'test', 'output', cmap, norm)
+        else:
+            plot_one([[5]], axs[1, j + num_train], 'test', 'output', cmap, norm)
 
     fig.patch.set_linewidth(5)
     fig.patch.set_edgecolor('black')  # substitute 'k' for black
