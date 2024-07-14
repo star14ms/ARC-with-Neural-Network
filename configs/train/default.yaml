@@ -1,5 +1,5 @@
 name: "default"
 
 params:
-  epoch: 1
+  epoch: 100
   lr: 0.01

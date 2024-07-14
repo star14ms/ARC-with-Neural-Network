@@ -1,4 +1,4 @@
 defaults:
-  - data: ARCSameShapeConv
-  - model: ARCSameShapeConv
+  - data: ShapeStableSolver
+  - model: ShapeStableSolver
   - train: default

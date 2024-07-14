@@ -4,11 +4,11 @@ from typing import List
 
 def get_model_class(model_name: str):
     from arc_prize.model_lightning import (
-        ARCSameShapeConvL,
+        ShapeStableSolverL,
     )
 
-    if model_name == 'ARCSameShapeConv':
-        model_class = ARCSameShapeConvL
+    if model_name == 'ShapeStableSolver':
+        model_class = ShapeStableSolverL
     else:
         raise ValueError(f"Model name {model_name} not found")
 
@@ -26,9 +26,9 @@ class TrainConfig:
 
 @dataclass
 class ModelConfig:
-    name: str = 'ARCSameShapeConvL'
+    name: str = 'ShapeStableSolver'
     pass
 
 @dataclass
-class ARCSameShapeConvConfig:
-    input_size: List[int] = (5, 5)
+class ShapeStableSolverConfig:
+    pass

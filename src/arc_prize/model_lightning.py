@@ -4,7 +4,8 @@ from torch import nn
 import torch.nn.functional as F
 from rich import print
 
-from arc_prize.model import ARCSameShapeConv
+from arc_prize.model import ShapeStableSolver
+from arc_prize.preprocess import one_hot_encode, one_hot_encode_changes, reconstruct_t_from_one_hot
 
 
 class LightningModuleBase(pl.LightningModule):
@@ -26,11 +27,11 @@ class LightningModuleBase(pl.LightningModule):
         return super().test_dataloader()
 
 
-class ARCSameShapeConvL(LightningModuleBase):
+class ShapeStableSolverL(LightningModuleBase):
     def __init__(self, lr=0.001, *args, **kwargs):
         super().__init__(lr, *args, **kwargs)
 
-        self.model = ARCSameShapeConv(*args, **kwargs)
+        self.model = ShapeStableSolver(*args, **kwargs)
         self.criterion = nn.CrossEntropyLoss()
         
         device = 'mps' if torch.backends.mps.is_available() else None
@@ -48,9 +49,10 @@ class ARCSameShapeConvL(LightningModuleBase):
         # Process each batch
         for i, (x, t) in enumerate(batches):
             # forward + backward + optimize
-            y = self.model(x)
+            source_one_hot, target_one_hot = t
+            y = self.model(x[0])
             y_prob = F.softmax(y)
-            loss = self.criterion(y_prob, t)
+            loss = self.criterion(y_prob, source_one_hot[0])
             total_loss += loss
 
             if i == total - 1:

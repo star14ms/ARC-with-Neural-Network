@@ -52,3 +52,46 @@ def plot_one(input_matrix, ax, train_or_test, input_or_output, cmap, norm):
         ax.set_title('TEST OUTPUT', color='green', fontweight='bold')
     else:
         ax.set_title(train_or_test + ' ' + input_or_output, fontweight='bold')
+
+
+def plot_kernels_and_outputs(y, kernels):
+    # Plotting the output tensor and kernels
+    y = y.detach().numpy()
+
+    # Total number of kernels
+    num_kernels = y.shape[1]
+    kernels_per_page = 256
+
+    # Calculate the number of pages needed
+    num_pages = (num_kernels + kernels_per_page - 1) // kernels_per_page
+
+    for page in range(num_pages):
+        fig, axes = plt.subplots(16, 32, figsize=(32, 16))
+        fig.suptitle(f'Kernel and Output Pairs - Page {page+1} (Shape: {y.shape})', fontsize=16, fontweight='bold')
+
+        for i in range(kernels_per_page):
+            kernel_idx = page * kernels_per_page + i
+            if kernel_idx >= num_kernels:
+                break
+            
+            row = i // 16
+            col_kernel = (i % 16) * 2
+            col_output = col_kernel + 1
+            
+            # Plot the kernel
+            ax_kernel = axes[row, col_kernel]
+            kernel_img = kernels[kernel_idx, 0, :, :]
+            ax_kernel.imshow(kernel_img, cmap='gray')
+            ax_kernel.set_title(f'Kernel {kernel_idx}', fontsize=6, color='red')
+            ax_kernel.axis('off')
+
+            # Plot the output
+            ax_output = axes[row, col_output]
+            output_img = y[0, kernel_idx, :, :]
+            ax_output.imshow(output_img, cmap='gray')
+            ax_output.set_title(f'Output {kernel_idx}', fontsize=6, color='black')
+            ax_output.axis('off')
+
+        plt.tight_layout()
+        plt.subplots_adjust(top=0.95)
+        plt.show()

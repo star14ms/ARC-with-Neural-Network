@@ -16,7 +16,7 @@ from arc_prize import (
     get_model_class,
     DataConfig,
     TrainConfig,
-    ARCSameShapeConvConfig,
+    ShapeStableSolverConfig,
 )
 from data import ARCDataModule
 from utils.lightning_custom import RichProgressBarCustom
@@ -53,6 +53,7 @@ def train(config: DictConfig):
     trainer.fit(model, datamodule=datamodule)
 
     # Save the model to disk (optional)
+    os.makedirs('./output', exist_ok=True)
     model_path = './output/model_{}.pth'.format(model.__class__.__name__)
     torch.save(model.state_dict(), model_path)
     print('Model saved to:', model_path)
@@ -61,7 +62,7 @@ def train(config: DictConfig):
 cs = ConfigStore.instance()
 cs.store(group="data", name="base_data", node=DataConfig, package="data")
 cs.store(group="train", name="base_train", node=TrainConfig, package="train")
-cs.store(group="model", name="base_AudioTransformer", node=ARCSameShapeConvConfig, package="model")
+cs.store(group="model", name="base_ShapeStableSolver", node=ShapeStableSolverConfig, package="model")
 
 
 @hydra.main(config_path=os.path.join('..', "configs"), config_name="train", version_base=None)

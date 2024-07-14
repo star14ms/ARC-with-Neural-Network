@@ -1,0 +1,4 @@
+name: "ShapeStableSolver"
+
+params:
+  batch_size: 1

@@ -1,4 +1,0 @@
-name: "ARCSameShapeConv"
-
-params:
-  batch_size: 1

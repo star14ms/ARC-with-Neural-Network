@@ -14,35 +14,47 @@ class Conv2dFixedKernel(nn.Conv2d):
         dilation: _size_2_t = 1,
         groups: int = 1,
         bias: bool = True,
-        padding_mode: str = 'zeros',  # TODO: refine this type
+        padding_mode: str = 'zeros',
         device=None,
         dtype=None,
         weight=None, 
         update=False
     ):
-        weight, out_channels = self.generate_all_possible_NxM_kernels(kernel_size) if weight is None else (weight, weight.shape[0])
+        if weight is None:
+            weight, out_channels = self.generate_all_possible_NxM_kernels(kernel_size, device=device, dtype=dtype)
+        else:
+            out_channels = weight.shape[0]
+
         super().__init__(
             in_channels, out_channels, 
             kernel_size, stride, padding, dilation, groups, bias, padding_mode, 
             device, dtype
         )
 
+        # Remove the default weight parameter
         del self._parameters['weight']
         
         if update:
+            # Register weight as a parameter for updates
             param = nn.Parameter(weight)
-            self.register_parameter('weight', param) # Replace the weight tensor
+            self.register_parameter('weight', param)
         else:
-            self.weight = weight # Stable weight (cannot be updateed)
-        
+            # Set fixed weight
+            self.weight = weight
+            
+    def to(self, *args, **kwargs):
+        self.weight = self.weight.to(*args, **kwargs)
+        return super().to(*args, **kwargs)
+
     @staticmethod
-    def generate_all_possible_NxM_kernels(kernel_size=(3, 3)):
-        '''Generate all possible n x m kernels'''
-        weight_values = [0, 1]
+    def generate_all_possible_NxM_kernels(kernel_size=(3, 3), device=None, dtype=None):
+        '''Generate all possible n x m kernels with values 0 and 1'''
+        weight_values = [0.0, 1.0]
         repeat = kernel_size[0] * kernel_size[1]
+        # Generate all possible combinations of kernel values
         weight_custom = torch.cat(
-            [torch.tensor(kernel, dtype=torch.float32).reshape(1, 1, kernel_size[0], kernel_size[1]) for kernel in product(weight_values, repeat=repeat)]
-        , dim=0)
+            [torch.tensor(kernel, dtype=dtype, device=device).reshape(1, 1, kernel_size[0], kernel_size[1]) 
+             for kernel in product(weight_values, repeat=repeat)], dim=0)
 
         out_channels = len(weight_values) ** repeat
         
