@@ -8,7 +8,7 @@ from arc_prize.preprocess import one_hot_encode, one_hot_encode_changes
 
 
 class ARCDataset(Dataset):
-    def __init__(self, challenge_json, solution_json=None, train=True, filter_funcs=(is_same_shape,), one_hot=True):
+    def __init__(self, challenge_json, solution_json=None, train=True, filter_funcs=(is_same_shape,), one_hot=True, augment_data=False):
         self.one_hot = one_hot
 
         # Load challenge and solution data
@@ -45,7 +45,9 @@ class ARCDataset(Dataset):
             self.solutions = {key: task for key, task in self.solutions.items() if key in self.challenges}
             
         self.train = train  # toggle to switch between train and test data
-        self.augment_data()
+        
+        if augment_data:
+            self.augment_data()
 
     def __len__(self):
         return len(self.challenges)
@@ -154,8 +156,6 @@ class ARCDataLoader(DataLoader):
     def __iter__(self):
         for batch in super().__iter__():
             xs, ts = batch
-            # xs = [x.squeeze(0) for x in xs]
-            # ts = [t.squeeze(0) for t in ts]
             yield list(zip(xs, ts))
             
     def __len__(self):
@@ -163,9 +163,10 @@ class ARCDataLoader(DataLoader):
 
 
 class ARCDataModule(LightningDataModule):
-    def __init__(self, base_path='./data/arc-prize-2024/', batch_size=1):
+    def __init__(self, base_path='./data/arc-prize-2024/', batch_size=1, augment_data=False):
         super().__init__()
         self.base_path = base_path
+        self.augment_data = augment_data
         self.challenges_train = self.base_path + 'arc-agi_training_challenges.json'
         self.solutions_train = self.base_path + 'arc-agi_training_solutions.json'
         self.challenges_val = self.base_path + 'arc-agi_evaluation_challenges.json'
@@ -181,12 +182,12 @@ class ARCDataModule(LightningDataModule):
     def setup(self, stage=None):
         # Assign train/val datasets for use in dataloaders
         if stage == 'fit' or stage is None:
-            self.train_dataset = ARCDataset(self.challenges_train, self.solutions_train, train=True)
-            self.val_dataset = ARCDataset(self.challenges_val, self.solutions_val, train=False)
+            self.train_dataset = ARCDataset(self.challenges_train, self.solutions_train, train=True, augment_data=self.augment_data)
+            self.val_dataset = ARCDataset(self.challenges_val, self.solutions_val, train=False, augment_data=self.augment_data)
 
         # Assign test dataset for use in dataloader(s)
         if stage == 'test' or stage is None:
-            self.test_dataset = ARCDataset(self.challenges_test, self.solutions_test, train=False)
+            self.test_dataset = ARCDataset(self.challenges_test, self.solutions_test, train=False, augment_data=self.augment_data)
 
     def train_dataloader(self):
         return ARCDataLoader(self.train_dataset, batch_size=self.batch_size)
