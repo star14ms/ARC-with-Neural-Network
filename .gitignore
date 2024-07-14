@@ -168,3 +168,6 @@ lightning_logs/
 # Hydra
 outputs/
 !configs/data
+
+# Model
+output/*.pth

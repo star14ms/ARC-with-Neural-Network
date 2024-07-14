@@ -1,0 +1,8 @@
+defaults:
+  - data: ShapeStableSolver
+  - model: ShapeStableSolver
+  - train: default
+
+model_path: "./output/model_ShapeStableSolver.pth"
+threshold: 0.5
+select_audio_file: True

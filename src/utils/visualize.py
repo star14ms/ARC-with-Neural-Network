@@ -40,6 +40,38 @@ def plot_task(dataset_train, dataset_test, idx):
     plt.show()
 
 
+def plot_input_predicted_answer(input_tensor, predicted_tensor, answer_tensor, idx=0):
+    """Plots the input, predicted, and answer pairs of a specified task, using the ARC color scheme."""
+    
+    def _plot_one(matrix, ax, title, cmap, norm):
+        ax.imshow(matrix, cmap=cmap, norm=norm)
+        ax.grid(True, which='both', color='lightgrey', linewidth = 0.5)
+        
+        plt.setp(plt.gcf().get_axes(), xticklabels=[], yticklabels=[])
+        ax.set_xticks([x-0.5 for x in range(1 + len(matrix[0]))])     
+        ax.set_yticks([x-0.5 for x in range(1 + len(matrix))])
+        
+        ax.set_title(title, fontweight='bold')
+    
+    fig, axs = plt.subplots(1, 3, figsize=(9, 3))
+    plt.suptitle(f'Task {idx}', fontsize=20, fontweight='bold', y=0.96)
+    
+    cmap = colors.ListedColormap(COLORS)
+    norm = colors.Normalize(vmin=0, vmax=9)
+    
+    _plot_one(input_tensor, axs[0], 'Input', cmap, norm)
+    _plot_one(predicted_tensor, axs[1], 'Predicted', cmap, norm)
+    _plot_one(answer_tensor, axs[2], 'Answer', cmap, norm)
+    
+    fig.patch.set_linewidth(5)
+    fig.patch.set_edgecolor('black')
+    fig.patch.set_facecolor('#dddddd')
+
+    fig.tight_layout()
+    fig.subplots_adjust(top=0.76)
+    plt.show()
+
+
 def plot_one(input_matrix, ax, train_or_test, input_or_output, cmap, norm):
     ax.imshow(input_matrix, cmap=cmap, norm=norm)
     ax.grid(True, which='both', color='lightgrey', linewidth = 0.5)

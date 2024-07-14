@@ -54,8 +54,9 @@ def train(config: DictConfig):
 
     # Save the model to disk (optional)
     os.makedirs('./output', exist_ok=True)
-    model_path = './output/model_{}.pth'.format(model.__class__.__name__)
+    model_path = './output/model_{}.pth'.format(model.model.__class__.__name__)
     torch.save(model.state_dict(), model_path)
+    print('Seed used', torch.seed())
     print('Model saved to:', model_path)
 
 
