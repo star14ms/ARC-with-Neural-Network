@@ -11,7 +11,8 @@ def one_hot_encode(matrix, num_classes=len(COLORS)):
     N, M = matrix.shape
     
     # Create a one-hot encoded tensor with shape [num_classes, N, M]
-    one_hot_matrix = torch.zeros(num_classes, N, M)
+    # one_hot_matrix = torch.zeros(num_classes, N, M)
+    one_hot_matrix = torch.full([num_classes, N, M], -1, dtype=torch.float)
     
     # Use scatter_ to fill in the one-hot encoded tensor
     one_hot_matrix.scatter_(0, matrix.unsqueeze(0), 1)
@@ -51,9 +52,6 @@ def reconstruct_t_from_one_hot(x, target_one_hot):
         x = torch.tensor(x)
     if not isinstance(target_one_hot, torch.Tensor):
         target_one_hot = torch.tensor(target_one_hot)
-
-    # Get the dimensions of the input matrices
-    N, M = x.shape
 
     # Initialize t as a copy of x
     t_reconstructed = x.clone()

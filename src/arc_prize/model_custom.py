@@ -13,7 +13,7 @@ class Conv2dFixedKernel(nn.Conv2d):
         padding: Union[str, _size_2_t] = 0,
         dilation: _size_2_t = 1,
         groups: int = 1,
-        bias: bool = True,
+        bias: bool = False,
         padding_mode: str = 'zeros',
         device=None,
         dtype=None,
@@ -21,9 +21,10 @@ class Conv2dFixedKernel(nn.Conv2d):
         update=False
     ):
         if weight is None:
-            weight, out_channels = self.generate_all_possible_NxM_kernels(kernel_size, device=device, dtype=dtype)
+            weight, out_channels, biases = self.generate_all_possible_NxM_kernels(kernel_size, device=device, dtype=dtype)
         else:
             out_channels = weight.shape[0]
+            biases = self.generate_biases(weight)
 
         super().__init__(
             in_channels, out_channels, 
@@ -33,17 +34,23 @@ class Conv2dFixedKernel(nn.Conv2d):
 
         # Remove the default weight parameter
         del self._parameters['weight']
+        del self._parameters['bias']
         
         if update:
             # Register weight as a parameter for updates
             param = nn.Parameter(weight)
             self.register_parameter('weight', param)
+            
+            self.bias = nn.Parameter(biases, requires_grad=update)
+            self.register_parameter('bias', self.bias)
         else:
             # Set fixed weight
             self.weight = weight
-            
+            self.bias = biases
+
     def to(self, *args, **kwargs):
         self.weight = self.weight.to(*args, **kwargs)
+        self.bias = self.bias.to(*args, **kwargs)
         return super().to(*args, **kwargs)
 
     @staticmethod
@@ -58,7 +65,15 @@ class Conv2dFixedKernel(nn.Conv2d):
 
         out_channels = len(weight_values) ** repeat
         
-        return weight_custom, out_channels
+        # Generate corresponding biases
+        biases = -(torch.sum(weight_custom, dim=(2, 3)) - 1).reshape(out_channels).to(device=device, dtype=dtype)
+        
+        return weight_custom, out_channels, biases
+
+    @staticmethod
+    def generate_biases(weight):
+        '''Generate biases based on weight patterns'''
+        return -(torch.sum(weight, dim=(2, 3)) - 1).reshape(weight.shape[0])
 
 
 def test_backward(model, x):

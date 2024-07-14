@@ -30,12 +30,11 @@ if __name__ == '__main__':
     source_one_hot = source_one_hot
     target_one_hot = target_one_hot
 
-    loss_fn = nn.CrossEntropyLoss()
+    loss_fn = nn.BCEWithLogitsLoss()
 
     # x_origin = torch.argmax(x, dim=0).float()
 
     y = model(x)
-    y_prob = torch.softmax(y, dim=0)
     loss = loss_fn(y, source_one_hot)
     
     print(loss)

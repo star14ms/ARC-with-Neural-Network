@@ -32,7 +32,7 @@ class ShapeStableSolverL(LightningModuleBase):
         super().__init__(lr, *args, **kwargs)
 
         self.model = ShapeStableSolver(*args, **kwargs)
-        self.criterion = nn.CrossEntropyLoss()
+        self.criterion = nn.BCEWithLogitsLoss()
         
         device = 'mps' if torch.backends.mps.is_available() else None
         self.model.to(device)
@@ -51,8 +51,7 @@ class ShapeStableSolverL(LightningModuleBase):
             # forward + backward + optimize
             source_one_hot, target_one_hot = t
             y = self.model(x[0])
-            y_prob = F.softmax(y)
-            loss = self.criterion(y_prob, source_one_hot[0])
+            loss = self.criterion(y, source_one_hot[0])
             total_loss += loss
 
             if i == total - 1:
@@ -62,7 +61,6 @@ class ShapeStableSolverL(LightningModuleBase):
             loss.backward()
             opt.step()
             
-        loss_avg = total_loss / total
-        print("Train loss: {:.6f}".format(loss_avg))
-        self.log('Train loss', loss_avg)
+        print("Train loss: {:.6f}".format(total_loss))
+        self.log('Train loss', total_loss)
         return loss
