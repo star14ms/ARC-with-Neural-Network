@@ -1,6 +1,4 @@
-from data import ARCDataset
 from utils.visualize import plot_task
-
 from constants import COLORS
 
 
@@ -78,6 +76,7 @@ def get_class_vector(data_item, verbose=False):
 
 if __name__ == '__main__':
     from rich import print
+    from data import ARCDataset
 
     verbose = True
     base_path = './data/arc-prize-2024/'

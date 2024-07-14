@@ -3,10 +3,14 @@ from torch.utils.data import Dataset, DataLoader
 import json
 from pytorch_lightning import LightningDataModule
 
+from classify import is_same_shape
+from arc_prize.preprocess import one_hot_encode, one_hot_encode_changes
 
 
 class ARCDataset(Dataset):
-    def __init__(self, challenge_json, solution_json=None, train=True):
+    def __init__(self, challenge_json, solution_json=None, train=True, filter_funcs=(is_same_shape,), one_hot=True):
+        self.one_hot = one_hot
+
         # Load challenge and solution data
         with open(challenge_json, 'r') as file:
             self.challenges = json.load(file)
@@ -15,8 +19,33 @@ class ARCDataset(Dataset):
                 self.solutions = json.load(file)
         else:
             self.solutions = None
+            
+        # Convert to torch tensors
+        self.challenges = {key: {
+            'train': {
+                'input': [torch.tensor(task_item['input']) for task_item in task['train']], 
+                'output': [torch.tensor(task_item['output']) for task_item in task['train']]
+            },
+            'test': {
+                'input': [torch.tensor(task_item['input']) for task_item in task['test']]
+            }
+        } for key, task in self.challenges.items()}
         
+        self.challenges = {key: task for key, task in list(self.challenges.items()) \
+            if all(
+                filter_func(
+                    [task_item for task_item in task['train']['input']], \
+                    [task_item for task_item in task['train']['output']]
+                ) for filter_func in filter_funcs)
+        }
+        self.challenges = {key: task for key, task in list(self.challenges.items())[:1] if key in self.challenges}
+        
+        if self.solutions is not None:
+            self.solutions = {key: [torch.tensor(task_item) for task_item in task] for key, task in self.solutions.items()}
+            self.solutions = {key: task for key, task in self.solutions.items() if key in self.challenges}
+            
         self.train = train  # toggle to switch between train and test data
+        self.augment_data()
 
     def __len__(self):
         return len(self.challenges)
@@ -26,17 +55,96 @@ class ARCDataset(Dataset):
         challenge = self.challenges[task_id]
         solution = self.solutions[task_id] if self.solutions is not None else None
 
+        # if self.train:
+        #     inputs = [pair for pair in challenge['train']['input']]
+        #     outputs = [pair for pair in challenge['train']['output']]
+        # else:
+        #     inputs = [pair for pair in challenge['test']['input']]
+        #     outputs = [pair for pair in solution] if self.solutions is not None else []
+
         if self.train:
-            inputs = [torch.tensor(pair['input'], dtype=torch.float32) for pair in challenge['train']]
-            outputs = [torch.tensor(pair['output'], dtype=torch.float32) for pair in challenge['train']]
+            inputs = [one_hot_encode(task_item) if self.one_hot else task_item for task_item in challenge['train']['input']]
+            outputs = [tuple(one_hot_encode_changes(task_item_in, task_item_out)) if self.one_hot else task_item_out for task_item_in, task_item_out in zip(challenge['train']['input'], challenge['train']['output'])]
         else:
-            inputs = [torch.tensor(pair['input'], dtype=torch.float32) for pair in challenge['test']]
-            outputs = [torch.tensor(pair, dtype=torch.float32) for pair in solution] if self.solutions is not None else []
+            inputs = [one_hot_encode(task_item) if self.one_hot else task_item for task_item in challenge['test']['input']]
+            outputs = [tuple(one_hot_encode_changes(task_item_in, task_item_out)) if self.one_hot else task_item_out for task_item_in, task_item_out in zip(challenge['test']['input'], solution)] if self.solutions is not None else []
 
         return inputs, outputs
 
     def task_key(self, idx):
         return list(self.challenges.keys())[idx]
+
+    def augment_data(self):
+        '''Augment data by adding all possible rotated and flipped versions without duplicates'''
+
+        def unique_augmentations(tensor):
+            # Create a set to store unique transformations
+            unique_transforms = set()
+            # List to store the augmented tensors
+            augmented_tensors = []
+
+            # Generate all possible transformations
+            transformations = [
+                tensor,  # original
+                torch.rot90(tensor, 1, (0, 1)),  # 90 degrees
+                torch.rot90(tensor, 2, (0, 1)),  # 180 degrees
+                torch.rot90(tensor, 3, (0, 1)),  # 270 degrees
+                torch.flip(tensor, [1]),  # horizontal flip
+                torch.flip(tensor, [0]),  # vertical flip
+                torch.rot90(torch.flip(tensor, [1]), 1, (0, 1)),  # 90 degrees + horizontal flip
+                torch.rot90(torch.flip(tensor, [0]), 1, (0, 1)),  # 90 degrees + vertical flip
+                torch.rot90(torch.flip(tensor, [1]), 3, (0, 1)),  # 270 degrees + horizontal flip
+                torch.rot90(torch.flip(tensor, [0]), 3, (0, 1)),  # 270 degrees + vertical flip
+            ]
+
+            # Add unique transformations to the list
+            for t in transformations:
+                t_tuple = tuple(t.numpy().ravel())
+                if t_tuple not in unique_transforms:
+                    unique_transforms.add(t_tuple)
+                    augmented_tensors.append(t)
+            
+            return augmented_tensors
+
+        # Augment challenges data
+        augmented_challenges = {}
+        for key, task in self.challenges.items():
+            augmented_task = {}
+            augmented_task['train'] = {
+                'input': [],
+                'output': []
+            }
+            augmented_task['test'] = {
+                'input': []
+            }
+            
+            # Apply augmentations to train data
+            for input_tensor, output_tensor in zip(task['train']['input'], task['train']['output']):
+                augmented_task['train']['input'].extend(unique_augmentations(input_tensor))
+                augmented_task['train']['output'].extend(unique_augmentations(output_tensor))
+            
+            # Apply augmentations to test data (input only)
+            for input_tensor in task['test']['input']:
+                augmented_task['test']['input'].extend(unique_augmentations(input_tensor))
+            
+            augmented_challenges[key] = augmented_task
+        self.challenges = augmented_challenges
+        
+        if self.solutions is None:
+            return
+
+        # Augment solutions data
+        augmented_solutions = {}
+        for key, task in self.solutions.items():
+            augmented_task = []
+            augmented_task.extend(task)
+            
+            # Apply augmentations to each task item
+            for task_item in task:
+                augmented_task.extend(unique_augmentations(task_item))
+            
+            augmented_solutions[key] = augmented_task
+        self.solutions = augmented_solutions
 
 
 class ARCDataLoader(DataLoader):
@@ -46,8 +154,8 @@ class ARCDataLoader(DataLoader):
     def __iter__(self):
         for batch in super().__iter__():
             xs, ts = batch
-            xs = [x.squeeze(0) for x in xs]
-            ts = [t.squeeze(0) for t in ts]
+            # xs = [x.squeeze(0) for x in xs]
+            # ts = [t.squeeze(0) for t in ts]
             yield list(zip(xs, ts))
             
     def __len__(self):
@@ -103,8 +211,8 @@ if __name__ == '__main__':
     # solutions = base_path + 'arc-agi_evaluation_solutions.json'
 
     # Example usage
-    dataset_train = ARCDataset(challenges, solutions, train=True)
-    dataset_test = ARCDataset(challenges, solutions, train=False)
+    dataset_train = ARCDataset(challenges, solutions, train=True, one_hot=False)
+    dataset_test = ARCDataset(challenges, solutions, train=False, one_hot=False)
     print(f'Data size: {len(dataset_train)}')
     
     # Visualize a task
