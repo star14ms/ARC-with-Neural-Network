@@ -1,4 +1,4 @@
 defaults:
-  - data: ShapeStableSolver
+  - data: train
   - model: ShapeStableSolver
   - train: default

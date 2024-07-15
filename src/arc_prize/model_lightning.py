@@ -32,7 +32,8 @@ class ShapeStableSolverL(LightningModuleBase):
         super().__init__(lr, *args, **kwargs)
 
         self.model = ShapeStableSolver(*args, **kwargs)
-        self.criterion = nn.BCEWithLogitsLoss()
+        self.loss_fn_source = nn.BCEWithLogitsLoss()
+        # self.loss_fn_target = nn.BCEWithLogitsLoss()
         
         device = 'mps' if torch.backends.mps.is_available() else None
         self.model.to(device)
@@ -42,17 +43,23 @@ class ShapeStableSolverL(LightningModuleBase):
         return self.model(inputs)
 
     def training_step(self, batches):
-        total_loss = 0
+        total_loss_source = 0
+        total_loss_target = 0
         total = len(batches)
         opt = self.optimizers()
 
         # Process each batch
         for i, (x, t) in enumerate(batches):
             # forward + backward + optimize
-            source_one_hot, target_one_hot = t
-            y = self.model(x[0])
-            loss = self.criterion(y, source_one_hot[0])
-            total_loss += loss
+            t_source, t_target = t
+            y_source, y_target = self.model(x)
+
+            loss_source = self.loss_fn_source(y_source, t_source)
+            # loss_target = self.loss_fn_target(y_target, t_target)
+            # loss = loss_source + loss_target
+            loss = loss_source
+            total_loss_source += loss_source
+            # total_loss_target += loss_target
 
             if i == total - 1:
                 break
@@ -60,7 +67,9 @@ class ShapeStableSolverL(LightningModuleBase):
             opt.zero_grad()
             loss.backward()
             opt.step()
-            
-        print("Train loss: {:.6f}".format(total_loss))
-        self.log('Train loss', total_loss)
+
+        print("Train loss: {:.6f} (source: {:.6f}, target: {:.6f})".format(total_loss_source+total_loss_target, total_loss_source, total_loss_target))
+        self.log('Train loss', total_loss_source+total_loss_target)
+        self.log('Train loss source', total_loss_source)
+        self.log('Train loss target', total_loss_target)
         return loss

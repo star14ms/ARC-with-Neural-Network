@@ -36,14 +36,20 @@ def train(config: DictConfig):
     model_class = get_model_class(config.model.name)
     model = model_class(**hparams_model, **hparams_shared, **hparams_train)
     print(OmegaConf.to_yaml(config))
+    print(model)
 
     # Initialize a trainer
-    # logger = TensorBoardLogger("./src/lightning_logs/", name=model.__class__.__name__)
-    # logger.log_hyperparams(params=hparams_model)
+    logger = TensorBoardLogger("./src/lightning_logs/", name=model.__class__.__name__)
+    logger.log_hyperparams(params={
+        'model': hparams_model,
+        'train': hparams_train,
+        'data': hparams_data,
+        'model_details': model.__str__(),
+    })
     
     trainer = Trainer(
         max_epochs=max_epochs, 
-        # logger=logger, 
+        logger=logger, 
         log_every_n_steps=1, 
         accelerator='mps' if torch.backends.mps.is_available() else None,
         callbacks=[RichProgressBarCustom()]

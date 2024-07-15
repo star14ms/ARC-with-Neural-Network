@@ -26,18 +26,14 @@ if __name__ == '__main__':
 
     model = ShapeStableSolver()
     x = dataset_train[0][0][0]
-    source_one_hot, target_one_hot = dataset_train[0][1][0]
-    source_one_hot = source_one_hot
-    target_one_hot = target_one_hot
+    t = dataset_train[0][1][0]
 
     loss_fn = nn.BCEWithLogitsLoss()
 
     # x_origin = torch.argmax(x, dim=0).float()
 
     y = model(x)
-    loss = loss_fn(y, source_one_hot)
+    loss = loss_fn(y, t)
     
     print(loss)
-    
-    kernels = model.encoder.conv.weight.detach().cpu().numpy()
     

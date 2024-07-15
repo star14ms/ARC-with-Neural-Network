@@ -29,20 +29,32 @@ def _test(config, model, dataset, device):
             x = input.to(device)
             source_one_hot = source_one_hot.to(device)
             target_one_hot = target_one_hot.to(device)
-            print(input.shape, source_one_hot.shape, target_one_hot.shape)
+            # print(input.shape, source_one_hot.shape, target_one_hot.shape)
 
-            y = model(x)
-            print(y)
-            y_prob = F.sigmoid(y)
-            # y_prob = F.softmax(y.view(-1), dim=0).view(y.size())
-            print((y_prob*100).int())
-            y_pred = torch.round(y_prob)
+            y_source, y_target = model(x.unsqueeze(0))
+            print(y_source)
+            # print(y_target)
+            y_source_prob = F.sigmoid(y_source)
+            # y_target_prob = F.sigmoid(y_target)
+            print((y_source_prob*10).int())
+            # print((y_target_prob*10).int())
+
+            y_pred = torch.where(y_source_prob > 0.5, 1, -1).squeeze(0) # [C, H, W]
+
+            x_origin = torch.argmax(x, dim=0).long() # [H, W]
+            t = reconstruct_t_from_one_hot(x_origin, target_one_hot) 
+
+            # overwrite x_origin with the predicted values
+            # H, W = target_one_hot.shape[1], target_one_hot.shape[2]
+            # y_pred = x_origin.clone().view(-1)
+            # for i, (x, y_pixels) in enumerate(zip(x_origin.view(-1), y_pred.permute(1, 2, 0).view(H*W, -1))):
+            #     if y_pixels.sum() == 0:
+            #         continue
+            #     y_pred[i] = y_pixels.argmax()
+            # y_pred = y_pred.view(H, W)
             
-            x_origin = torch.argmax(x, dim=0).long()
-            source = reconstruct_t_from_one_hot(x_origin, target_one_hot) 
-
             # visualize
-            plot_input_predicted_answer(x_origin.detach().cpu(), y_pred.detach().cpu(), source.detach().cpu())
+            plot_input_predicted_answer(x_origin.detach().cpu(), y_pred.detach().cpu(), t.detach().cpu())
 
 
 def test(config):

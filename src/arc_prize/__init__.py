@@ -32,4 +32,5 @@ class ModelConfig:
 
 @dataclass
 class ShapeStableSolverConfig:
-    pass
+    reduced_channels_encoder: List[int] = (512, 128, 32)
+    reduced_channels_decoder: List[int] = (128, 32)
