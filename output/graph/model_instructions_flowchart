@@ -1,0 +1,91 @@
+// Model Instructions Flowchart
+digraph {
+	subgraph cluster_pattern {
+		bgcolor=lavender color=purple label="1. Extract Pattern of Data"
+		pattern_feature_extractor_input [label="Feature Extractor" bg_color=black fillcolor=yellow shape=box3d style=filled]
+		pattern_feature_extractor_output [label="Feature Extractor" bg_color=black fillcolor=yellow shape=box3d style=filled]
+		pattern_extractor [label="Pattern Extractor" color=yellow shape=box style=filled]
+		subgraph cluster_pattern_inside {
+			bgcolor=white label=""
+			pattern_feature_map_input [label="Feature Maps" bg_color=black fillcolor=lightgray shape=box3d style=filled]
+			pattern_feature_map_output [label="Feature Maps" bg_color=black fillcolor=lightgray shape=box3d style=filled]
+		}
+		pattern_feature_extractor_input -> pattern_feature_map_input
+		pattern_feature_extractor_output -> pattern_feature_map_output
+		pattern_feature_map_input -> pattern_extractor
+		pattern_feature_map_output -> pattern_extractor
+	}
+	subgraph cluster_feature {
+		bgcolor=lavender color=purple label="2. Extract Feature of Data"
+		feature_extractor [label="Feature Extractor" color=yellow shape=box style=filled]
+	}
+	subgraph cluster_shape {
+		bgcolor=lightblue color=blue label="3. Determine Output Shape and Colors"
+		shape_classifier [label="Shape Classifier" color=aqua shape=box style=filled]
+		shape_predictor [label="Shape Predictor" color=yellow shape=box style=filled]
+		subgraph cluster_shape_inside {
+			bgcolor=white label=""
+			shape_classes [label="<f1>Same as Input | <f2>Based on Input | <f3>Independent (Fixed)" fillcolor=lightgrey shape=record style=filled]
+		}
+		shape_classifier -> shape_classes
+		shape_classes:f2 -> shape_predictor
+		shape_classes:f3 -> shape_predictor
+	}
+	subgraph cluster_canvas {
+		bgcolor=lightgreen color=green label="4. Determine Canvas"
+		canvas_classifier [label="Canvas Classifier" color=aqua shape=box style=filled]
+		canvas_generator [label="Canvas Generator" color=yellow shape=box style=filled]
+		subgraph cluster_canvas_inside {
+			bgcolor=white label=""
+			canvas_classes [label="<f1>Same as Input | <f2>Based on Input | <f3>Independent (Fixed)" fillcolor=lightgrey shape=record style=filled]
+		}
+		canvas_classifier -> canvas_classes
+		canvas_classes:f2 -> canvas_generator
+		canvas_classes:f3 -> canvas_generator
+	}
+	subgraph cluster_filler {
+		bgcolor=lightcoral color=red label="5. Determine Each Pixel Value of Output"
+		filler_classifier [label="Pixel Classifier" bg_color=black fillcolor=aqua shape=box3d style=filled]
+		pixel_color_predictor [label="Pixel Color Predictor" bg_color=black fillcolor=yellow shape=box3d style=filled]
+		subgraph cluster_filler_inside {
+			bgcolor=white label=""
+			filler_classes [label="<f0>No-Change | <f1>Substitute" fillcolor=lightgray shape=record style=filled]
+		}
+		filler_classifier -> filler_classes
+		filler_classes:<f1> -> pixel_color_predictor
+	}
+	pattern [label=Pattern color=lightgrey shape=box style=filled]
+	feature_map_test [label="Feature Map" color=lightgrey shape=box style=filled]
+	output_shape [label="Output Shape" color=lightgrey shape=box style=filled]
+	canvas [label=Canvas color=lightgrey shape=box style=filled]
+	pattern_extractor -> pattern
+	feature_extractor -> feature_map_test
+	pattern -> shape_classifier
+	pattern -> canvas_classifier
+	pattern -> filler_classifier
+	pattern -> shape_predictor
+	pattern -> canvas_generator
+	pattern -> pixel_color_predictor
+	feature_map_test -> shape_classifier
+	feature_map_test -> canvas_classifier
+	feature_map_test -> filler_classifier
+	feature_map_test -> pixel_color_predictor
+	canvas_classes:f1 -> canvas
+	canvas_generator -> canvas
+	shape_classes:f1 -> output_shape
+	shape_predictor -> output_shape
+	canvas -> filler_classifier
+	output_shape -> canvas_classifier
+	input_output [label="Input-Output Pairs" bg_color=black fillcolor=orange shape=box3d style=filled]
+	inputs [label=Inputs bg_color=black fillcolor=orange shape=box3d style=filled]
+	outputs [label=Outputs bg_color=black fillcolor=orange shape=box3d style=filled]
+	input [label="Input Test" color=orange shape=box style=filled]
+	output [label="output Test" color=orange shape=box style=filled]
+	input_output -> inputs
+	input_output -> outputs
+	inputs -> pattern_feature_extractor_input
+	outputs -> pattern_feature_extractor_output
+	input -> feature_extractor
+	filler_classes:<f0> -> output
+	pixel_color_predictor -> output
+}
