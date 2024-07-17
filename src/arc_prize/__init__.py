@@ -18,6 +18,7 @@ def get_model_class(model_name: str):
 class DataConfig:
     name: str = 'default'
     batch_size: int = 1
+    cold_value: int = -1
     augment_data: bool = False
 
 @dataclass

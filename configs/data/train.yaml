@@ -2,4 +2,5 @@ name: "ShapeStableSolver"
 
 params:
   batch_size: 1
+  cold_value: -1
   augment_data: True

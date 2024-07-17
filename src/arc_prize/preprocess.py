@@ -2,7 +2,7 @@ import torch
 from constants import COLORS
 
 
-def one_hot_encode(matrix, num_classes=len(COLORS)):
+def one_hot_encode(matrix, num_classes=len(COLORS), cold_value=-1):
     # Ensure the input is a tensor
     if not isinstance(matrix, torch.Tensor):
         matrix = torch.tensor(matrix)
@@ -11,8 +11,10 @@ def one_hot_encode(matrix, num_classes=len(COLORS)):
     N, M = matrix.shape
     
     # Create a one-hot encoded tensor with shape [num_classes, N, M]
-    # one_hot_matrix = torch.zeros(num_classes, N, M)
-    one_hot_matrix = torch.full([num_classes, N, M], -1, dtype=torch.float)
+    if cold_value == 0:
+        one_hot_matrix = torch.zeros(num_classes, N, M)
+    else:
+        one_hot_matrix = torch.full([num_classes, N, M], cold_value, dtype=torch.float)
     
     # Use scatter_ to fill in the one-hot encoded tensor
     one_hot_matrix.scatter_(0, matrix.unsqueeze(0), 1)
