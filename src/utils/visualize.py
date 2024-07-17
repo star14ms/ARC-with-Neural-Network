@@ -1,11 +1,26 @@
 import matplotlib.pyplot as plt
 from matplotlib import colors
+import os
 
 from constants import COLORS
 
 
-def plot_task(dataset_train, dataset_test, idx):
+def plot_task(dataset_train, dataset_test, idx, data_category, fdir_to_save=None):
     """Plots the train and test pairs of a specified task, using the ARC color scheme."""
+
+    def plot_one(input_matrix, ax, train_or_test, input_or_output, cmap, norm):
+        ax.imshow(input_matrix, cmap=cmap, norm=norm)
+        ax.grid(True, which='both', color='lightgrey', linewidth = 0.5)
+        
+        plt.setp(plt.gcf().get_axes(), xticklabels=[], yticklabels=[])
+        ax.set_xticks([x-0.5 for x in range(1 + len(input_matrix[0]))])     
+        ax.set_yticks([x-0.5 for x in range(1 + len(input_matrix))])
+        
+        if train_or_test == 'test' and input_or_output == 'output':
+            ax.set_title('TEST OUTPUT', color='green', fontweight='bold')
+        else:
+            ax.set_title(train_or_test + ' ' + input_or_output, fontweight='bold')
+
     task_key = dataset_train.task_key(idx)  # Get the task ID
     train_inputs, train_outputs = dataset_train[idx]  # Load the first task
     test_inputs, test_outputs = dataset_test[idx]  # Load the first task
@@ -15,7 +30,7 @@ def plot_task(dataset_train, dataset_test, idx):
     num_total = num_train + num_test
     
     fig, axs = plt.subplots(2, num_total, figsize=(3*num_total, 3*2))
-    plt.suptitle(f'Set #{idx}, {task_key}:', fontsize=20, fontweight='bold', y=0.96)
+    plt.suptitle(f'{data_category.capitalize()} Set #{idx+1}, {task_key}:', fontsize=20, fontweight='bold', y=0.96)
     
     cmap = colors.ListedColormap(COLORS)
     norm = colors.Normalize(vmin=0, vmax=9)
@@ -37,53 +52,74 @@ def plot_task(dataset_train, dataset_test, idx):
 
     fig.tight_layout()
     fig.subplots_adjust(top=0.85)
-    plt.show()
+    
+    if fdir_to_save is not None:
+        fname = os.path.join(fdir_to_save, '{}_{}.png'.format(idx+1, task_key))
+        plt.savefig(fname)
+        plt.close()
+        print('{} saved'.format(fname))
+    else:
+        plt.show()
 
 
-def plot_input_predicted_answer(input_tensor, predicted_tensor, answer_tensor, idx=0):
+def plot_single_image(matrix, ax, title, cmap, norm):
+    ax.imshow(matrix, cmap=cmap, norm=norm)
+    ax.grid(True, which='both', color='lightgrey', linewidth = 0.5)
+    
+    plt.setp(plt.gcf().get_axes(), xticklabels=[], yticklabels=[])
+    ax.set_xticks([x-0.5 for x in range(1 + len(matrix[0]))])     
+    ax.set_yticks([x-0.5 for x in range(1 + len(matrix))])
+    
+    ax.set_title(title, fontweight='bold')
+
+
+def plot_xyt(input_tensor, predicted_tensor, answer_tensor=None, idx=0):
     """Plots the input, predicted, and answer pairs of a specified task, using the ARC color scheme."""
-    
-    def _plot_one(matrix, ax, title, cmap, norm):
-        ax.imshow(matrix, cmap=cmap, norm=norm)
-        ax.grid(True, which='both', color='lightgrey', linewidth = 0.5)
-        
-        plt.setp(plt.gcf().get_axes(), xticklabels=[], yticklabels=[])
-        ax.set_xticks([x-0.5 for x in range(1 + len(matrix[0]))])     
-        ax.set_yticks([x-0.5 for x in range(1 + len(matrix))])
-        
-        ax.set_title(title, fontweight='bold')
-    
-    fig, axs = plt.subplots(1, 3, figsize=(9, 3))
+    num_img = 3
+    fig, axs = plt.subplots(1, num_img, figsize=(9, num_img))
     plt.suptitle(f'Task {idx}', fontsize=20, fontweight='bold', y=0.96)
     
     cmap = colors.ListedColormap(COLORS)
     norm = colors.Normalize(vmin=0, vmax=9)
     
-    _plot_one(input_tensor, axs[0], 'Input', cmap, norm)
-    _plot_one(predicted_tensor, axs[1], 'Predicted', cmap, norm)
-    _plot_one(answer_tensor, axs[2], 'Answer', cmap, norm)
+    plot_single_image(input_tensor, axs[0], 'Input', cmap, norm)
+    plot_single_image(predicted_tensor, axs[1], 'Predicted', cmap, norm)
+    if answer_tensor:
+        plot_single_image(answer_tensor, axs[2], 'Answer', cmap, norm)
     
     fig.patch.set_linewidth(5)
     fig.patch.set_edgecolor('black')
     fig.patch.set_facecolor('#dddddd')
 
     fig.tight_layout()
-    fig.subplots_adjust(top=0.76)
     plt.show()
 
 
-def plot_one(input_matrix, ax, train_or_test, input_or_output, cmap, norm):
-    ax.imshow(input_matrix, cmap=cmap, norm=norm)
-    ax.grid(True, which='both', color='lightgrey', linewidth = 0.5)
+def plot_xyts(task_result, title_prefix="Task"):
+    """Plots rows of input, predicted, and answer triples for a set of tasks, using the ARC color scheme."""
+    num_pairs = len(task_result)
+    num_columns = 3
+    fig, axs = plt.subplots(num_columns, num_pairs, figsize=(num_columns*6, 10))
+
+    # If there's only one task, axs may not be a 2D array
+    if num_pairs == 1:
+        axs = [axs]  # Make it 2D array
+
+    cmap = colors.ListedColormap(COLORS)
+    norm = colors.Normalize(vmin=0, vmax=9)
     
-    plt.setp(plt.gcf().get_axes(), xticklabels=[], yticklabels=[])
-    ax.set_xticks([x-0.5 for x in range(1 + len(input_matrix[0]))])     
-    ax.set_yticks([x-0.5 for x in range(1 + len(input_matrix))])
+    for i in range(num_pairs):
+        plot_single_image(task_result[i][0], axs[0][i], f'{title_prefix} Inputs' if i == 0 else '', cmap, norm)
+        plot_single_image(task_result[i][1], axs[1][i], f'{title_prefix} Predictions' if i == 0 else '', cmap, norm)
+        if isinstance(task_result[i][2], type(task_result[i][0])):
+            plot_single_image(task_result[i][2], axs[2][i], f'{title_prefix} Answers' if i == 0 else '', cmap, norm)
     
-    if train_or_test == 'test' and input_or_output == 'output':
-        ax.set_title('TEST OUTPUT', color='green', fontweight='bold')
-    else:
-        ax.set_title(train_or_test + ' ' + input_or_output, fontweight='bold')
+    fig.patch.set_linewidth(5)
+    fig.patch.set_edgecolor('black')
+    fig.patch.set_facecolor('#dddddd')
+    
+    plt.tight_layout()
+    plt.show()
 
 
 def plot_kernels_and_outputs(y, kernels):

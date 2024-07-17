@@ -171,3 +171,4 @@ outputs/
 
 # Model
 output/*.pth
+output/task_visualization/*

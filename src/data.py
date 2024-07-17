@@ -39,7 +39,7 @@ class ARCDataset(Dataset):
                     [task_item for task_item in task['train']['output']]
                 ) for filter_func in filter_funcs)
         }
-        self.challenges = {key: task for key, task in list(self.challenges.items())[:1] if key in self.challenges}
+        self.challenges = {key: task for key, task in list(self.challenges.items()) if key in self.challenges}
         
         if self.solutions is not None:
             self.solutions = {key: [torch.tensor(task_item) for task_item in task] for key, task in self.solutions.items()}
@@ -205,15 +205,24 @@ class ARCDataModule(LightningDataModule):
 if __name__ == '__main__':
     from rich import print
     from utils.visualize import plot_task
+    import os
 
     base_path = './data/arc-prize-2024/'
+    data_category = 'val'
+    fdir_to_save = f'output/task_visualization/{data_category}/'
 
     # Reading files
-    challenges = base_path + 'arc-agi_training_challenges.json'
-    solutions = base_path + 'arc-agi_training_solutions.json'
-    # challenges = base_path + 'arc-agi_evaluation_challenges.json'
-    # solutions = base_path + 'arc-agi_evaluation_solutions.json'
-
+    if data_category == 'train':
+        challenges = base_path + 'arc-agi_training_challenges.json'
+        solutions = base_path + 'arc-agi_training_solutions.json'
+    elif data_category == 'val':
+        challenges = base_path + 'arc-agi_evaluation_challenges.json'
+        solutions = base_path + 'arc-agi_evaluation_solutions.json'
+    elif data_category == 'test':
+        challenges = base_path + 'arc-agi_test_challenges.json'
+        solutions = None
+    else:
+        raise ValueError(f'Invalid data category: {data_category}')
 
     # Example usage
     filter_funcs = ()
@@ -221,9 +230,14 @@ if __name__ == '__main__':
     dataset_test = ARCDataset(challenges, solutions, train=False, one_hot=False, filter_funcs=filter_funcs)
     print(f'Data size: {len(dataset_train)}')
 
+    # save figure images
+    if fdir_to_save is not None:
+        fdir_to_save = os.path.join(os.getcwd(), fdir_to_save)
+        os.makedirs(fdir_to_save, exist_ok=True)
+
     # Visualize a task
     for index in range(len(dataset_train)):
-        plot_task(dataset_train, dataset_test, index)
+        plot_task(dataset_train, dataset_test, index, data_category, fdir_to_save=fdir_to_save)
 
 
     # # Example usage
