@@ -139,19 +139,14 @@ def get_filter_funcs():
 
 if __name__ == '__main__':
     from rich import print
+
     from data import ARCDataset
+    from constants import get_challenges_solutions_filepath
 
     verbose = True
-    base_path = './data/arc-prize-2024/'
+    data_category = 'train'
 
-    # Reading files
-    challenges = base_path + 'arc-agi_training_challenges.json'
-    solutions = base_path + 'arc-agi_training_solutions.json'
-    # challenges = base_path + 'arc-agi_evaluation_challenges.json'
-    # solutions = base_path + 'arc-agi_evaluation_solutions.json'
-    # challenges = base_path + 'arc-agi_test_challenges.json'
-    # solutions = None
-
+    challenges, solutions = get_challenges_solutions_filepath(data_category)
 
     # # Example usage
     # dataset_train = ARCDataset(challenges, solutions, train=True, one_hot=False)
@@ -183,4 +178,4 @@ if __name__ == '__main__':
     
     # Visualize a task
     for index in range(len(dataset_train)):
-        plot_task(dataset_train, dataset_test, index)
+        plot_task(dataset_train, dataset_test, index, data_category)

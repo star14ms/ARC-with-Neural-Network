@@ -4,3 +4,4 @@ defaults:
   - train: default
 
 model_path: "./output/model_ShapeStableSolver.pth"
+verbose_single: False

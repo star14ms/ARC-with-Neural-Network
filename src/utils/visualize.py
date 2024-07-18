@@ -84,7 +84,7 @@ def plot_xyt(input_tensor, predicted_tensor, answer_tensor=None, idx=0):
     
     plot_single_image(input_tensor, axs[0], 'Input', cmap, norm)
     plot_single_image(predicted_tensor, axs[1], 'Predicted', cmap, norm)
-    if answer_tensor:
+    if answer_tensor is not None:
         plot_single_image(answer_tensor, axs[2], 'Answer', cmap, norm)
     
     fig.patch.set_linewidth(5)
@@ -163,3 +163,34 @@ def plot_kernels_and_outputs(y, kernels):
         plt.tight_layout()
         plt.subplots_adjust(top=0.95)
         plt.show()
+
+
+def print_image_with_probs(*images):
+    for h in range(max(images, key=lambda x: x.shape[0]).shape[0]):
+        for image in images:
+            if h >= image.shape[0]:
+                print('  ', end='')
+                continue
+            for w in range(image.shape[1]):
+                pixel_prob = image[h, w].item()
+                if pixel_prob < 0.01:
+                    print('⬛️', end='')
+                elif pixel_prob < 0.05:
+                    print('🟫', end='')
+                elif pixel_prob < 0.1:
+                    print('🟥', end='')
+                elif pixel_prob < 0.3:
+                    print('🟧', end='')
+                elif pixel_prob < 0.5:
+                    print('🟨', end='')
+                elif pixel_prob < 0.7:
+                    print('🟩', end='')
+                elif pixel_prob < 0.95:
+                    print('🟦', end='')
+                elif pixel_prob < 0.99:
+                    print('🟪', end='')
+                else:
+                    print('⬜️', end='')
+            print('  ', end='')
+        print()
+    print()
