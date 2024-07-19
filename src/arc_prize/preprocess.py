@@ -8,13 +8,13 @@ def one_hot_encode(matrix, num_classes=len(COLORS), cold_value=-1):
         matrix = torch.tensor(matrix)
     
     # Get the dimensions of the input matrix
-    N, M = matrix.shape
+    H, W = matrix.shape
     
-    # Create a one-hot encoded tensor with shape [num_classes, N, M]
+    # Create a one-hot encoded tensor with shape [num_classes, H, W]
     if cold_value == 0:
-        one_hot_matrix = torch.zeros(num_classes, N, M)
+        one_hot_matrix = torch.zeros(num_classes, H, W)
     else:
-        one_hot_matrix = torch.full([num_classes, N, M], cold_value, dtype=torch.float)
+        one_hot_matrix = torch.full([num_classes, H, W], cold_value, dtype=torch.float)
     
     # Use scatter_ to fill in the one-hot encoded tensor
     one_hot_matrix.scatter_(0, matrix.unsqueeze(0), 1)

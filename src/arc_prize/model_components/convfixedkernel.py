@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+import torch.nn.functional as F
 from itertools import product
 from torch.nn.modules.conv import _size_2_t, Union
 
@@ -74,6 +75,42 @@ class Conv2dFixedKernel(nn.Conv2d):
     def generate_biases(weight):
         '''Generate biases based on weight patterns'''
         return -(torch.sum(weight, dim=(2, 3)) - 1).reshape(weight.shape[0])
+
+
+class Conv2dEncoderLayer(nn.Module):
+    def __init__(self, in_channels=1, reduced_channels=[512, 32], fixed_kernel=False, out_one_channel=False, kernel_size=(3, 3), stride=1, padding=1, pad_value=-1):
+        super().__init__()
+        self.padding = padding
+        self.pad_value = pad_value
+
+        if fixed_kernel:
+            self.conv = Conv2dFixedKernel(in_channels, kernel_size=kernel_size, stride=stride, padding=0)
+        else:
+            self.conv = nn.Conv2d(in_channels, reduced_channels[0], kernel_size=kernel_size, stride=stride, padding=0, bias=False)
+        self.activation = nn.ReLU()
+
+        self.linear_layers = nn.Sequential()
+        for i in range(len(reduced_channels)-1):
+            self.linear_layers.add_module(f'linear_{i}', nn.Linear(reduced_channels[i], reduced_channels[i+1], bias=False))
+            self.linear_layers.add_module(f'relu_{i}', nn.ReLU())
+        self.linear_layers.add_module(f'norm', nn.BatchNorm1d(reduced_channels[-1]))
+
+        if out_one_channel:
+            self.linear_layers.add_module('out', nn.Linear(reduced_channels[-1], 1, bias=False))
+
+    def forward(self, x):
+        N, H, W = x.shape[0], x.shape[2], x.shape[3]
+        x = F.pad(x, (self.padding, self.padding, self.padding, self.padding), mode='constant', value=self.pad_value)
+        x = self.activation(self.conv(x)) # [N, C, H, W]
+        x = x.permute(0, 2, 3, 1).reshape(N*H*W, -1) # [N*H*W, C]
+        x = self.linear_layers(x)
+
+        return x.view(N, H, W, -1).permute(0, 3, 1, 2)
+
+    def to(self, *args, **kwargs):
+        self.conv = self.conv.to(*args, **kwargs)
+        return super().to(*args, **kwargs)
+    
 
 
 def test_backward(model, x):

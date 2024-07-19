@@ -8,9 +8,10 @@ from arc_prize.preprocess import one_hot_encode, one_hot_encode_changes
 
 
 class ARCDataset(Dataset):
-    def __init__(self, challenge_json, solution_json=None, train=True, filter_funcs=get_filter_funcs(), one_hot=True, cold_value=-1, augment_data=False):
+    def __init__(self, challenge_json, solution_json=None, train=True, filter_funcs=get_filter_funcs(), one_hot=True, cold_value=-1, augment_data=False, ignore_color=False):
         self.one_hot = one_hot
         self.cold_value = cold_value
+        self.ignore_color = ignore_color
 
         # Load challenge and solution data
         with open(challenge_json, 'r') as file:
@@ -36,7 +37,8 @@ class ARCDataset(Dataset):
             if all(
                 filter_func(
                     [task_item for task_item in task['train']['input']], \
-                    [task_item for task_item in task['train']['output']]
+                    [task_item for task_item in task['train']['output']], \
+                    key
                 ) for filter_func in filter_funcs)
         }
         self.challenges = {key: task for key, task in list(self.challenges.items()) if key in self.challenges}
@@ -67,10 +69,16 @@ class ARCDataset(Dataset):
 
         if self.train:
             inputs = [one_hot_encode(task_item, cold_value=self.cold_value) if self.one_hot else task_item for task_item in challenge['train']['input']]
-            outputs = [tuple(one_hot_encode_changes(task_item_in, task_item_out)) if self.one_hot else task_item_out for task_item_in, task_item_out in zip(challenge['train']['input'], challenge['train']['output'])]
+            if self.ignore_color:
+                outputs = [one_hot_encode_changes(task_item_in, task_item_out)[0] if self.one_hot else task_item_out for task_item_in, task_item_out in zip(challenge['train']['input'], challenge['train']['output'])]
+            else:
+                outputs = [one_hot_encode(task_item_out, cold_value=0) if self.one_hot else task_item_out for task_item_out in challenge['train']['output']]
         else:
             inputs = [one_hot_encode(task_item, cold_value=self.cold_value) if self.one_hot else task_item for task_item in challenge['test']['input']]
-            outputs = [tuple(one_hot_encode_changes(task_item_in, task_item_out)) if self.one_hot else task_item_out for task_item_in, task_item_out in zip(challenge['test']['input'], solution)] if self.solutions is not None else []
+            if self.ignore_color:
+                outputs = [one_hot_encode_changes(task_item_in, task_item_out)[0] if self.one_hot else task_item_out for task_item_in, task_item_out in zip(challenge['test']['input'], solution)] if self.solutions is not None else []
+            else:
+                outputs = [one_hot_encode(task_item_out, cold_value=0) if self.one_hot else task_item_out for task_item_out in solution]
 
         return inputs, outputs
 
@@ -164,7 +172,7 @@ class ARCDataLoader(DataLoader):
 
 
 class ARCDataModule(LightningDataModule):
-    def __init__(self, base_path='./data/arc-prize-2024/', batch_size=1, augment_data=False, cold_value=-1):
+    def __init__(self, base_path='./data/arc-prize-2024/', batch_size=1, augment_data=False, cold_value=-1, ignore_color=False):
         super().__init__()
         self.base_path = base_path
         self.challenges_train = self.base_path + 'arc-agi_training_challenges.json'
@@ -177,20 +185,27 @@ class ARCDataModule(LightningDataModule):
         self.batch_size = batch_size
         self.augment_data = augment_data
         self.cold_value = cold_value
+        self.ignore_color = ignore_color
         self.prepare_data()
 
     def prepare_data(self):
         self.setup()
 
     def setup(self, stage=None):
+        kwargs = {
+            'cold_value': self.cold_value,
+            'augment_data': self.augment_data,
+            'ignore_color': self.ignore_color
+        }
+
         # Assign train/val datasets for use in dataloaders
         if stage == 'fit' or stage is None:
-            self.train_dataset = ARCDataset(self.challenges_train, self.solutions_train, train=True, augment_data=self.augment_data, cold_value=self.cold_value)
-            self.val_dataset = ARCDataset(self.challenges_val, self.solutions_val, train=False, augment_data=self.augment_data, cold_value=self.cold_value)
+            self.train_dataset = ARCDataset(self.challenges_train, self.solutions_train, train=True, **kwargs)
+            self.val_dataset = ARCDataset(self.challenges_val, self.solutions_val, train=False, **kwargs)
 
         # Assign test dataset for use in dataloader(s)
         if stage == 'test' or stage is None:
-            self.test_dataset = ARCDataset(self.challenges_test, self.solutions_test, train=False, augment_data=self.augment_data, cold_value=self.cold_value)
+            self.test_dataset = ARCDataset(self.challenges_test, self.solutions_test, train=False, **kwargs)
 
     def train_dataloader(self):
         return ARCDataLoader(self.train_dataset, batch_size=self.batch_size)
@@ -206,28 +221,17 @@ if __name__ == '__main__':
     from rich import print
     from utils.visualize import plot_task
     import os
+    
+    from constants import get_challenges_solutions_filepath
 
-    base_path = './data/arc-prize-2024/'
-    data_category = 'val'
-    fdir_to_save = f'output/task_visualization/{data_category}/'
-
-    # Reading files
-    if data_category == 'train':
-        challenges = base_path + 'arc-agi_training_challenges.json'
-        solutions = base_path + 'arc-agi_training_solutions.json'
-    elif data_category == 'val':
-        challenges = base_path + 'arc-agi_evaluation_challenges.json'
-        solutions = base_path + 'arc-agi_evaluation_solutions.json'
-    elif data_category == 'test':
-        challenges = base_path + 'arc-agi_test_challenges.json'
-        solutions = None
-    else:
-        raise ValueError(f'Invalid data category: {data_category}')
+    data_category = 'train'
+    fdir_to_save = None
+    # fdir_to_save = f'output/task_visualization/{data_category}/'
 
     # Example usage
-    filter_funcs = ()
-    dataset_train = ARCDataset(challenges, solutions, train=True, one_hot=False, filter_funcs=filter_funcs)
-    dataset_test = ARCDataset(challenges, solutions, train=False, one_hot=False, filter_funcs=filter_funcs)
+    challenges, solutions = get_challenges_solutions_filepath(data_category)
+    dataset_train = ARCDataset(challenges, solutions, train=True, one_hot=False, filter_funcs=())
+    dataset_test = ARCDataset(challenges, solutions, train=False, one_hot=False, filter_funcs=())
     print(f'Data size: {len(dataset_train)}')
 
     # save figure images

@@ -20,6 +20,7 @@ class DataConfig:
     batch_size: int = 1
     cold_value: int = -1
     augment_data: bool = False
+    ignore_color: bool = False
 
 @dataclass
 class TrainConfig:
@@ -33,5 +34,5 @@ class ModelConfig:
 
 @dataclass
 class ShapeStableSolverConfig:
-    reduced_channels_encoder: List[int] = (512, 128, 32)
+    reduced_channels_encoder: List[int] = (512, 32)
     reduced_channels_decoder: List[int] = (128, 32)

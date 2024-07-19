@@ -1,39 +1,30 @@
-from data import ARCDataset
-
-from utils.visualize import plot_task, plot_kernels_and_outputs
-from arc_prize.model import Conv2dFixedKernel
-from arc_prize.preprocess import one_hot_encode, one_hot_encode_changes, reconstruct_t_from_one_hot
-
 from torch import nn
-import torch
-import matplotlib.pyplot as plt
-import numpy as np
-from constants import COLORS
+from rich import print
 
+from data import ARCDataset
 from arc_prize.model import ShapeStableSolver
+from constants import get_challenges_solutions_filepath
+from utils.visualize import plot_task
 
-    
+
 if __name__ == '__main__':
-    from rich import print
-    base_path = './data/arc-prize-2024/'
-    challenges = base_path + 'arc-agi_training_challenges.json'
-    solutions = base_path + 'arc-agi_training_solutions.json'
-
+    
+    challenges, solutions = get_challenges_solutions_filepath('train')
     dataset_train = ARCDataset(challenges, solutions, train=True)
     dataset_test = ARCDataset(challenges, solutions, train=False)
     # plot_task(dataset_train, dataset_test, 0)
 
-
     model = ShapeStableSolver()
-    x = dataset_train[0][0][0]
+    print(model)
+    x = dataset_train[0][0][0].unsqueeze(0)
     t = dataset_train[0][1][0]
 
     loss_fn = nn.BCEWithLogitsLoss()
 
     # x_origin = torch.argmax(x, dim=0).float()
 
-    y = model(x)
-    loss = loss_fn(y, t)
+    y_source = model(x)
+    loss = loss_fn(y_source[0], t)
     
     print(loss)
     

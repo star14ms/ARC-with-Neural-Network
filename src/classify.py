@@ -7,18 +7,18 @@ from torch import tensor
 class ARCDataClassifier:
 
     # Check if all inputs and outputs have the same shape
-    def is_same_shape(xs, ys):
+    def is_same_shape(xs, ys, *args, **kwargs):
         return all(x.shape == y.shape for x, y in zip(xs, ys))
 
     # Check if all inputs and outputs have the same shape
     def is_same_shape_f(bool=True):
         if bool is True:
-            return lambda xs, ys: ARCDataClassifier.is_same_shape(xs, ys)
+            return lambda *args, **kwargs: ARCDataClassifier.is_same_shape(*args, **kwargs)
         else:
-            return lambda xs, ys: not ARCDataClassifier.is_same_shape(xs, ys)
+            return lambda *args, **kwargs: not ARCDataClassifier.is_same_shape(*args, **kwargs)
 
     # Check if all colors appeared in the input present in the output
-    def is_same_colors(xs, ys):
+    def is_same_colors(xs, ys, *args, **kwargs):
         for x, y in zip(xs, ys):
             colors_input = set(x.unique().tolist())
             colors_output = set(y.unique().tolist())
@@ -28,7 +28,7 @@ class ARCDataClassifier:
         return True
 
     # Check if the number of colors is the same in the input and output
-    def is_same_number_of_colors(xs, ys):
+    def is_same_number_of_colors(xs, ys, *args, **kwargs):
         for x, y in zip(xs, ys):
             colors_input = set(x.unique().tolist())
             colors_output = set(y.unique().tolist())
@@ -38,7 +38,7 @@ class ARCDataClassifier:
         return True
 
     # Check if the number of background colors is the same in the input and output
-    def is_same_number_of_background_colors(xs, ys):
+    def is_same_number_of_background_colors(xs, ys, *args, **kwargs):
         for x, y in zip(xs, ys):
             bincount_input = x.flatten().to(int).bincount(minlength=len(COLORS)).tolist()
             bincount_output = y.flatten().to(int).bincount(minlength=len(COLORS)).tolist()
@@ -85,9 +85,8 @@ class ARCDataClassifier:
         return class_vector
 
 
-    def is_n_m_colored_in_out_f(n, m):
-
-        def is_n_colored_input_m_colored_output(xs, ys, n, m):
+    def is_n_m_colored_in_out_f(n, m, *args, **kwargs):
+        def is_n_colored_input_m_colored_output(xs, ys, *args, **kwargs):
             for x, y in zip(xs, ys):
                 colors_input = set(x.unique().tolist())
                 colors_output = set(y.unique().tolist())
@@ -96,20 +95,20 @@ class ARCDataClassifier:
                     return False
             return True
 
-        return partial(is_n_colored_input_m_colored_output, n=n, m=m)
+        return partial(is_n_colored_input_m_colored_output, n=n, m=m, *args, **kwargs)
 
 
-    def are_input_output_similar_f(threshold=0.9):
+    def are_input_output_similar_f(threshold=0.9, *args, **kwargs):
 
-        def are_input_output_similar(xs, ys, threshold):
+        def are_input_output_similar(xs, ys, *args, **kwargs):
             for x, y in zip(xs, ys):
                 if (x == y).sum() / x.numel() < threshold:
                     return False
             return True
-        return partial(are_input_output_similar, threshold=threshold)
+        return partial(are_input_output_similar, *args, **kwargs)
 
 
-    def is_dominent_color_stable(xs, ys):
+    def is_dominent_color_stable(xs, ys, *args, **kwargs):
         for x, y in zip(xs, ys):
             x_number_of_colors = tensor([(x == i).sum() for i in range(10)])
             y_number_of_colors = tensor([(y == i).sum() for i in range(10)])
@@ -119,20 +118,25 @@ class ARCDataClassifier:
             if not (x_dominant_color == y_dominant_color and x_number_of_colors[x_dominant_color] == y_number_of_colors[y_dominant_color]):
                 return False
         return True
-    
+
 
     def is_dominent_color_stable_f(bool=True):
         if bool is True:
-            return lambda xs, ys: ARCDataClassifier.is_dominent_color_stable(xs, ys)
+            return lambda *args, **kwargs: ARCDataClassifier.is_dominent_color_stable(*args, **kwargs)
         else:
-            return lambda xs, ys: not ARCDataClassifier.is_dominent_color_stable(xs, ys)
+            return lambda *args, **kwargs: not ARCDataClassifier.is_dominent_color_stable(*args, **kwargs)
+
+    
+    def in_data_codes_f(codes, *args, **kwargs):
+        def in_data_codes(xs, ys, key, *args, **kwargs):
+            return True if key in codes else False
+        
+        return partial(in_data_codes, *args, **kwargs)
 
 
 def get_filter_funcs():
     filter_funcs = (
-        ARCDataClassifier.is_same_shape_f(True),
-        ARCDataClassifier.is_n_m_colored_in_out_f(2, 3),
-        # ARCDataClassifier.is_dominent_color_stable_f(True),
+        ARCDataClassifier.in_data_codes_f(['00d62c1b']),
     )
     return filter_funcs
 
@@ -148,28 +152,13 @@ if __name__ == '__main__':
 
     challenges, solutions = get_challenges_solutions_filepath(data_category)
 
-    # # Example usage
-    # dataset_train = ARCDataset(challenges, solutions, train=True, one_hot=False)
-    # dataset_test = ARCDataset(challenges, solutions, train=False, one_hot=False)
-    # print(f'Data size: {len(dataset_train)}')
-    
-    # dict_classes_dataset = {}
-    
-    # # Visualize a task
-    # for index in range(len(dataset_train)):
-    #     dict_classes_dataset[index] = get_class_vector(dataset_train[index], verbose=verbose)
-        
-    #     if verbose:
-    #         plot_task(dataset_train, dataset_test, index)
-            
-    # for key, value in dict_classes_dataset.items():
-    #     print(f'{key}: {value}')
-
     # Example usage
+    # filter_funcs = get_filter_funcs()
     filter_funcs = (
-        ARCDataClassifier.is_same_shape_f(True),
-        ARCDataClassifier.is_n_m_colored_in_out_f(2, 3),
-        # ARCDataClassifier.is_dominent_color_stable_f(True),
+        ARCDataClassifier.in_data_codes_f(['00d62c1b']),
+        # ARCDataClassifier.is_same_shape_f(True),
+        # ARCDataClassifier.is_n_m_colored_in_out_f(2, 3),
+        # ARCDataClassifier.are_input_output_similar_f(0.9),
     )
 
     dataset_train = ARCDataset(challenges, solutions, train=True, one_hot=False, filter_funcs=filter_funcs)

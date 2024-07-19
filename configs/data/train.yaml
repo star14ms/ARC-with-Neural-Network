@@ -1,6 +1,8 @@
 name: "ShapeStableSolver"
 
 params:
+  base_path: "./data/arc-prize-2024/"
   batch_size: 1
   cold_value: -1
   augment_data: True
+  ignore_color: True

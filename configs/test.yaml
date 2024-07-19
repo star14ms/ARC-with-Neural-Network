@@ -3,5 +3,5 @@ defaults:
   - model: ShapeStableSolver
   - train: default
 
-model_path: "./output/model_ShapeStableSolver.pth"
+model_path: "./output/model_ShapeStableSolverIgnoreColor.pth"
 verbose_single: False

@@ -1,78 +1,57 @@
 import torch
-import torch.nn.functional as F
 from torch import nn
 
-from arc_prize.model_custom import Conv2dFixedKernel
+from arc_prize.model_components.convfixedkernel import Conv2dEncoderLayer
 from utils.visualize import plot_kernels_and_outputs
+from arc_prize.model_components.attention import ReductiveAttention
 
 
-class Conv2dEncoderLayer(nn.Module):
-    def __init__(self, in_channels=1, reduced_channels=[512, 128, 32], fixed_kernel=False, out_one_channel=False, kernel_size=(3, 3), stride=1, padding=1, pad_value=-1):
+class ConvSameColorFeatureExtractor(nn.Module):
+    def __init__(self, pad_value=-1, reduced_channels_encoder=[512, 32], reduced_channels_decoder=[512, 32], out_dim=4):
         super().__init__()
-        self.padding = padding
-        self.pad_value = pad_value
-        self.out_one_channel = out_one_channel
-
-        if fixed_kernel:
-            self.conv = Conv2dFixedKernel(in_channels, kernel_size=kernel_size, stride=stride, padding=0)
-        else:
-            self.conv = nn.Conv2d(in_channels, reduced_channels[0], kernel_size=kernel_size, stride=stride, padding=0, bias=False)
-        self.activation = nn.ReLU()
-
-        self.linear_layers = nn.Sequential()
-        for i in range(len(reduced_channels)-1):
-            self.linear_layers.add_module(f'linear_{i}', nn.Linear(reduced_channels[i], reduced_channels[i+1], bias=False))
-            self.linear_layers.add_module(f'relu_{i}', nn.ReLU())
-        self.linear_layers.add_module(f'norm', nn.BatchNorm1d(reduced_channels[-1]))
-
-        if out_one_channel:
-            self.out = nn.Linear(reduced_channels[-1], 1, bias=False)
-
-    def forward(self, x, **kwargs):
-        N, H, W = x.shape[0], x.shape[2], x.shape[3]
-        x = F.pad(x, (self.padding, self.padding, self.padding, self.padding), mode='constant', value=self.pad_value)
-        x = self.activation(self.conv(x)) # [N, C, H, W]
-        x = x.permute(0, 2, 3, 1).reshape(N*H*W, -1) # [N*H*W, C]
-        x = self.linear_layers(x)
-
-        if self.out_one_channel:
-            x = self.out(x)
-            return x.view(N, H, W)
-        else:
-            return x.view(N, H, W, -1).permute(0, 3, 1, 2)
-
-    def to(self, *args, **kwargs):
-        self.conv = self.conv.to(*args, **kwargs)
-        return super().to(*args, **kwargs)
-    
-    
-class ConvFeatureExtractor(nn.Module):
-    def __init__(self, pad_value=-1, reduced_channels_encoder=[512, 128, 32], reduced_channels_decoder=[128, 32]):
-        super().__init__()
+        self.V = reduced_channels_decoder[-1]
+        self.out_dim = out_dim
         self.encoder = Conv2dEncoderLayer(1, reduced_channels_encoder, pad_value=pad_value, fixed_kernel=True)
         self.extender = Conv2dEncoderLayer(reduced_channels_encoder[-1], reduced_channels_decoder, pad_value=pad_value)
-        self.decoder = Conv2dEncoderLayer(reduced_channels_decoder[-1], reduced_channels_decoder, pad_value=pad_value, out_one_channel=True)
+        self.attn_reduction = ReductiveAttention()
+        self.attn_h = nn.Parameter(torch.randn(self.V))
+
+        self.decoder = nn.Sequential(
+            nn.Linear(self.V, 32, bias=True),
+            nn.ReLU(),
+            nn.Linear(32, out_dim, bias=True),
+            nn.BatchNorm1d(out_dim),
+        )
 
     def forward(self, x):
+        N, C, H, W = x.shape
         x = x.transpose(1, 0) # [C, N, H, W]
 
         x_list = []
-        for i, x_one in enumerate(x):
-            if not torch.any(x_one == 1):
-                x_one = x_one.unsqueeze(0) # .fill_(1)
-                x_list.append(x_one)
+        for i, x_c in enumerate(x):
+            if not torch.any(x_c == 1):
+                x_c = (x_c.view(1, N, 1, H, W) + 1).repeat(1, 1,  self.out_dim, 1, 1) # .fill_(1) # default value is 0
+                x_list.append(x_c)
                 continue
 
-            x_one = x_one.view(1, *x_one.shape)
-            x_one = self.encoder(x_one)
-            for _ in range(5):
-                x_one = self.extender(x_one) # [N, H, W]
-            x_one = self.decoder(x_one).unsqueeze(0)
-            x_list.append(x_one)
+            x_c = x_c.view(N, 1, H, W)
+            x_c = self.encoder(x_c) # [N, V, H, W]
+            x_c_seqs = []
+            for _ in range(3): ### Hyperparameter
+                x_c = self.extender(x_c) # [N, V, H, W]
+                x_c_seqs.append(x_c.unsqueeze(0))
+            x_c_seqs = torch.cat(x_c_seqs) # [S, N, V, H, W]
 
-        x = torch.cat(x_list) + 1 # default value is 0
+            S, N, V, H, W = x_c_seqs.shape
+            x_c_seqs = x_c_seqs.permute(1, 3, 4, 0, 2).view(N*H*W, S, V)
+            x_c = self.attn_reduction(x_c_seqs, self.attn_h.repeat(N*H*W, 1)).view(N, H, W, V).permute(0, 3, 1, 2)
 
-        return x.transpose(1, 0) # [N, C, H, W]
+            x_c = self.decoder(x_c.permute(0, 2, 3, 1).reshape(N*H*W, V)).view(N, H, W, -1).permute(0, 3, 1, 2)
+            x_list.append(x_c.unsqueeze(0)) # [1, N, V, H, W]
+
+        x = torch.cat(x_list) # [C, N, V, H, W]
+
+        return x
         
     def to(self, *args, **kwargs):
         self.encoder = self.encoder.to(*args, **kwargs)
@@ -80,34 +59,48 @@ class ConvFeatureExtractor(nn.Module):
 
 
 class ShapeStableSolver(nn.Module):
-    def __init__(self, pad_value=-1, reduced_channels_encoder=[512, 128, 32], reduced_channels_decoder=[128, 32], n_classes=10, hidden_size=64):
+    def __init__(self, pad_value=-1, reduced_channels_encoder=[512, 32], reduced_channels_decoder=[128, 32], hidden_size=1, num_classes=10, feature_dim=1, color_dim=1):
         super().__init__()
-        self.feature_extractor = ConvFeatureExtractor(pad_value, reduced_channels_encoder, reduced_channels_decoder)
-        
-        self.source_finder = nn.Sequential(
-            nn.Linear(n_classes, hidden_size, bias=False),
-            nn.ReLU(),
-            nn.Linear(hidden_size, 1, bias=False),
+        self.feature_extractor = ConvSameColorFeatureExtractor(pad_value, reduced_channels_encoder, reduced_channels_decoder, out_dim=feature_dim)
+
+        self.encoder = nn.TransformerEncoder(
+            nn.TransformerEncoderLayer(d_model=num_classes, nhead=1, dim_feedforward=128, batch_first=True, bias=True),
+            num_layers=1,
+        )
+
+        self.attn_input = nn.TransformerDecoder(
+            nn.TransformerDecoderLayer(d_model=num_classes, nhead=1, dim_feedforward=1, batch_first=True, bias=False),
+            num_layers=1,
+        )
+
+        self.decoder = nn.Sequential(
+            nn.Linear(color_dim, 1, bias=False),
             nn.BatchNorm1d(1),
         )
-        # self.target_finder = nn.Sequential(
-        #     nn.Linear(n_classes, hidden_size, bias=False),
-        #     nn.ReLU(),
-        #     nn.Linear(hidden_size, n_classes, bias=False),
-        #     nn.BatchNorm1d(n_classes),
-        # )
+
+        # self.color_vector = nn.Parameter(torch.randn(num_classes, feature_dim)) # dim-1 because the first channel is the input
 
     def forward(self, x):
         N, C, H, W = x.shape
+        y = self.feature_extractor(x) # [C, N, V, H, W]
+        y = y.permute(1, 3, 4, 0, 2).reshape(N*H*W, C, -1)
 
-        x = self.feature_extractor(x) # [N, C, H, W]
-        y_source = x[:, 1:].sum(dim=1).view(N, H, W)
+        # y = self.color_vector.repeat(N*H*W, 1, 1) # [N*H*W, C, V]
+        # y = torch.cat([y], dim=2) # [N*H*W, C, V+FV]
+        # V = self.color_vector.shape[1] + y.shape[2]
+        V = y.shape[2]
+        y = y.transpose(2, 1) # [N*H*W, V, C]
+        y = self.encoder(y)
 
-        # x = x.permute(0, 2, 3, 1).reshape(H*W, C)
-        # y_source = self.source_finder(x).view(H, W)
-        # y_target = self.target_finder(x).view(H, W, C).permute(2, 0, 1) # [C, H, W]
+        x = x.permute(0, 2, 3, 1).reshape(N*H*W, 1, C).repeat(1, V, 1) # [N*H*W, V, C]
+        y = self.attn_input(y, x)
+        y = y.transpose(2, 1) # [N*H*W, C, V]
 
-        return y_source, None
+        y = y.reshape(N*H*W*C, V)
+        y = self.decoder(y) # [N*H*W*C, 1]
+        y = y.view(N, H, W, C).permute(0, 3, 1, 2) # [N, C, H, W]
+
+        return y
 
     def to(self, *args, **kwargs):
         self.feature_extractor = self.feature_extractor.to(*args, **kwargs)

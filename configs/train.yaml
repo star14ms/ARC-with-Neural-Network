@@ -2,3 +2,5 @@ defaults:
   - data: train
   - model: ShapeStableSolver
   - train: default
+
+save_path: "./output/"

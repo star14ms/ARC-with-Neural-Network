@@ -22,19 +22,20 @@ from data import ARCDataModule
 from utils.lightning_custom import RichProgressBarCustom
 
 
-def train(config: DictConfig):
+def train(config: DictConfig, model=None):
     hparams_data = OmegaConf.to_container(config.data.params, resolve=True)
     hparams_model = OmegaConf.to_container(config.model.params, resolve=True)
     hparams_train = OmegaConf.to_container(config.train.params, resolve=True)
     max_epochs = hparams_train.pop("epoch", None)
 
     hparams_shared = {
+        'ignore_color': hparams_data['ignore_color'],
     }
 
     datamodule = ARCDataModule(**hparams_data)
 
     model_class = get_model_class(config.model.name)
-    model = model_class(**hparams_model, **hparams_shared, **hparams_train)
+    model = model_class(**hparams_model, **hparams_shared, **hparams_train, model=model)
     print(OmegaConf.to_yaml(config))
     print(model)
 
@@ -45,13 +46,14 @@ def train(config: DictConfig):
         'train': hparams_train,
         'data': hparams_data,
         'model_details': model.__str__(),
+        'seed': torch.seed(),
     })
     
     trainer = Trainer(
         max_epochs=max_epochs, 
         logger=logger, 
         log_every_n_steps=1, 
-        accelerator='mps' if torch.backends.mps.is_available() else None,
+        accelerator='mps' if torch.backends.mps.is_available() else 'cpu',
         callbacks=[RichProgressBarCustom()]
     )
     
@@ -59,8 +61,8 @@ def train(config: DictConfig):
     trainer.fit(model, datamodule=datamodule)
 
     # Save the model to disk (optional)
-    os.makedirs('./output', exist_ok=True)
-    model_path = './output/model_{}.pth'.format(model.model.__class__.__name__)
+    os.makedirs(config.save_path, exist_ok=True)
+    model_path = config.save_path + '/model_{}.pth'.format(model.model.__class__.__name__)
     torch.save(model.state_dict(), model_path)
     print('Seed used', torch.seed())
     print('Model saved to:', model_path)
