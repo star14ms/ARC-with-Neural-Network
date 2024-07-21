@@ -1,4 +1,4 @@
-name: "ShapeStableSolver"
+name: "ShapeStableSolverIgnoreColor"
 
 params:
   base_path: "./data/arc-prize-2024/"

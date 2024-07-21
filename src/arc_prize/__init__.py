@@ -5,10 +5,13 @@ from typing import List
 def get_model_class(model_name: str):
     from arc_prize.model_lightning import (
         ShapeStableSolverL,
+        ShapeStableSolverIgnoreColorL,
     )
 
-    if model_name == 'ShapeStableSolver':
+    if model_name in ['ShapeStableSolver', 'ShapeStableSolverL']:
         model_class = ShapeStableSolverL
+    elif model_name in ['ShapeStableSolverIgnoreColor', 'ShapeStableSolverIgnoreColorL']:
+        model_class = ShapeStableSolverIgnoreColorL
     else:
         raise ValueError(f"Model name {model_name} not found")
 
@@ -34,5 +37,10 @@ class ModelConfig:
 
 @dataclass
 class ShapeStableSolverConfig:
+    reduced_channels_encoder: List[int] = (512, 32)
+    reduced_channels_decoder: List[int] = (128, 32)
+
+@dataclass
+class ShapeStableSolverIgnoreColorConfig:
     reduced_channels_encoder: List[int] = (512, 32)
     reduced_channels_decoder: List[int] = (128, 32)

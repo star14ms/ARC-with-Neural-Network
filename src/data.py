@@ -78,7 +78,7 @@ class ARCDataset(Dataset):
             if self.ignore_color:
                 outputs = [one_hot_encode_changes(task_item_in, task_item_out)[0] if self.one_hot else task_item_out for task_item_in, task_item_out in zip(challenge['test']['input'], solution)] if self.solutions is not None else []
             else:
-                outputs = [one_hot_encode(task_item_out, cold_value=0) if self.one_hot else task_item_out for task_item_out in solution]
+                outputs = [one_hot_encode(task_item_out, cold_value=0) if self.one_hot else task_item_out for task_item_out in solution] if self.solutions is not None else []
 
         return inputs, outputs
 

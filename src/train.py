@@ -7,7 +7,7 @@ import os
 import warnings
 import hydra
 from hydra.core.config_store import ConfigStore
-from omegaconf import OmegaConf, DictConfig
+from omegaconf import OmegaConf, DictConfig, open_dict
 from rich import print
 from rich.traceback import install
 install()
@@ -17,10 +17,12 @@ from arc_prize import (
     DataConfig,
     TrainConfig,
     ShapeStableSolverConfig,
+    ShapeStableSolverIgnoreColorConfig
 )
 from data import ARCDataModule
 from utils.lightning_custom import RichProgressBarCustom
-
+from test import test
+from arc_prize.model_components.attn_input import ShapeStableSolver
 
 def train(config: DictConfig, model=None):
     hparams_data = OmegaConf.to_container(config.data.params, resolve=True)
@@ -28,16 +30,12 @@ def train(config: DictConfig, model=None):
     hparams_train = OmegaConf.to_container(config.train.params, resolve=True)
     max_epochs = hparams_train.pop("epoch", None)
 
-    hparams_shared = {
-        'ignore_color': hparams_data['ignore_color'],
-    }
-
     datamodule = ARCDataModule(**hparams_data)
-
-    model_class = get_model_class(config.model.name)
-    model = model_class(**hparams_model, **hparams_shared, **hparams_train, model=model)
-    print(OmegaConf.to_yaml(config))
-    print(model)
+    
+    if model is None or isinstance(model, type):
+        model_class = get_model_class(config.model.name if model is None else model.__name__)
+        model = model_class(**hparams_model, **hparams_train, model=model if isinstance(model, type) else None)
+        print(OmegaConf.to_yaml(config))
 
     # Initialize a trainer
     logger = TensorBoardLogger("./src/lightning_logs/", name=model.__class__.__name__)
@@ -66,18 +64,28 @@ def train(config: DictConfig, model=None):
     torch.save(model.state_dict(), model_path)
     print('Seed used', torch.seed())
     print('Model saved to:', model_path)
+    
+    return model
 
 
 cs = ConfigStore.instance()
 cs.store(group="data", name="base_data", node=DataConfig, package="data")
 cs.store(group="train", name="base_train", node=TrainConfig, package="train")
 cs.store(group="model", name="base_ShapeStableSolver", node=ShapeStableSolverConfig, package="model")
+cs.store(group="model", name="base_ShapeStableSolverIgnoreColor", node=ShapeStableSolverIgnoreColorConfig, package="model")
 
 
 @hydra.main(config_path=os.path.join('..', "configs"), config_name="train", version_base=None)
 def main(config: DictConfig) -> None:
     # warnings.filterwarnings('ignore')
-    train(config)
+    model = train(config)
+
+    # with open_dict(config):
+    #     config.model_path = config.save_path + '/model_{}.pth'.format(model.model.__class__.__name__)
+    #     config.verbose_single = False
+    #     config.data.params.augment_data = False
+
+    # test(config, model)
 
 
 if __name__ == '__main__':

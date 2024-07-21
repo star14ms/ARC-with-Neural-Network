@@ -1,0 +1,6 @@
+name: "ShapeStableSolverIgnoreColor"
+
+params:
+  reduced_channels_encoder: [512, 32]
+  reduced_channels_decoder: [128, 32]
+  

@@ -15,11 +15,12 @@ from arc_prize import (
     DataConfig, 
     TrainConfig, 
     ShapeStableSolverConfig,
+    ShapeStableSolverIgnoreColorConfig
 )
 from data import ARCDataset
 from utils.visualize import print_image_with_probs, plot_xyt, plot_xyts
 from arc_prize.preprocess import reconstruct_t_from_one_hot
-
+from arc_prize.model import ShapeStableSolver
 
 def _test(config, model, dataset_train, dataset_test, device):
     for i, (inputs, outputs) in enumerate(dataset_train):
@@ -44,14 +45,21 @@ def _test(config, model, dataset_train, dataset_test, device):
                 t0 = torch.zeros_like(x)
                 t0[4:5] += t
                 t = t0
+                t = reconstruct_t_from_one_hot(x_origin, t)
+                # y_origin = torch.where(y_prob > 0.5, 1, 0).squeeze(0) # [C, H, W]
+                # t = x_origin + torch.where(t == 1, 4, 0)
+                # xy_construct = x_origin.detach()
+                # xy_construct[torch.where(y_origin == 1)] = 4
+                # y_origin = xy_construct
+                correct_ratio = (y_origin == t).sum().float() / t.numel()
+                n_pixels_wrong = (y_origin != t).sum().int()
             else:
                 y_origin = torch.argmax(y_prob[0], dim=0).long() # [H, W]
-                
+                t = reconstruct_t_from_one_hot(x_origin, t)
+                correct_ratio = (y_origin == t).sum().float() / t.numel()
+                n_pixels_wrong = (y_origin != t).sum().int()
 
-            t = reconstruct_t_from_one_hot(x_origin, t)
-            correct_ratio = (y_origin == t).sum().float() / t.numel()
-            
-            print('Task: {}, index: {}, correct {}%'.format(key, j+1, correct_ratio*100))
+            print('Task: {}, index: {}, correct {:2}%, N Pixels Wrong: {}'.format(key, j+1, correct_ratio*100, n_pixels_wrong))
             # print(y - y.min())
             # print_image_with_probs(y_prob.squeeze(0).detach().cpu(), y_pred.squeeze(0).detach().cpu(), t.squeeze(0).detach().cpu())
 
@@ -67,8 +75,7 @@ def _test(config, model, dataset_train, dataset_test, device):
             # visualize
             if config.verbose_single:
                 plot_xyt(x_origin.detach().cpu(), y_origin.detach().cpu(), t.detach().cpu())
-                continue
-
+            
             task_result.append((x_origin.detach().cpu(), y_origin.detach().cpu(), t.detach().cpu()))
 
         plot_xyts(task_result, title_prefix=key)
@@ -80,22 +87,19 @@ def test(config, model=None):
     base_path = hparams_data.pop('base_path')
     del hparams_data['batch_size']
 
-    hparams_shared = {
-        'ignore_color': hparams_data['ignore_color'],
-    }
+    if model is None or isinstance(model, type):
+        model_class = get_model_class(config.model.name if model is None else model.__name__)
+        model = model_class(**hparams_model, model=model if isinstance(model, type) else None)
+        print(OmegaConf.to_yaml(config))
 
-    model_class = get_model_class(config.model.name)
-    model = model_class(**hparams_model, **hparams_shared, model=model)
-    # print(OmegaConf.to_yaml(config))
-    
-    if config.model_path.endswith('.pth'):
-        state_dict = torch.load(config.model_path)
-    elif config.model_path.endswith('.ckpt'):
-        state_dict = torch.load(config.model_path)['state_dict']
-    model.load_state_dict(state_dict)
-    model.eval()
+        if config.model_path.endswith('.pth'):
+            state_dict = torch.load(config.model_path)
+        elif config.model_path.endswith('.ckpt'):
+            state_dict = torch.load(config.model_path)['state_dict']
+        model.load_state_dict(state_dict)
 
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+    model.eval()
     model.to(device)
 
     # Reading files
@@ -114,6 +118,7 @@ cs = ConfigStore.instance()
 cs.store(group="data", name="base_data", node=DataConfig, package="data")
 cs.store(group="train", name="base_train", node=TrainConfig, package="train")
 cs.store(group="model", name="base_ShapeStableSolver", node=ShapeStableSolverConfig, package="arc_prize")
+cs.store(group="model", name="base_ShapeStableSolverIgnoreColor", node=ShapeStableSolverIgnoreColorConfig, package="arc_prize")
 
 
 @hydra.main(config_path=os.path.join('..', "configs"), config_name="test", version_base=None)

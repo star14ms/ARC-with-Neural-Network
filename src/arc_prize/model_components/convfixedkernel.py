@@ -93,10 +93,11 @@ class Conv2dEncoderLayer(nn.Module):
         for i in range(len(reduced_channels)-1):
             self.linear_layers.add_module(f'linear_{i}', nn.Linear(reduced_channels[i], reduced_channels[i+1], bias=False))
             self.linear_layers.add_module(f'relu_{i}', nn.ReLU())
-        self.linear_layers.add_module(f'norm', nn.BatchNorm1d(reduced_channels[-1]))
 
         if out_one_channel:
             self.linear_layers.add_module('out', nn.Linear(reduced_channels[-1], 1, bias=False))
+
+        self.norm = nn.InstanceNorm2d(reduced_channels[-1])
 
     def forward(self, x):
         N, H, W = x.shape[0], x.shape[2], x.shape[3]
@@ -104,8 +105,10 @@ class Conv2dEncoderLayer(nn.Module):
         x = self.activation(self.conv(x)) # [N, C, H, W]
         x = x.permute(0, 2, 3, 1).reshape(N*H*W, -1) # [N*H*W, C]
         x = self.linear_layers(x)
+        x = x.view(N, H, W, -1).permute(0, 3, 1, 2)
+        x = self.norm(x)
 
-        return x.view(N, H, W, -1).permute(0, 3, 1, 2)
+        return x
 
     def to(self, *args, **kwargs):
         self.conv = self.conv.to(*args, **kwargs)

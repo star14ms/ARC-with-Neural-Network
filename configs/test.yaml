@@ -1,7 +1,7 @@
 defaults:
-  - data: test
+  - data: ShapeStableSolver_test
   - model: ShapeStableSolver
   - train: default
 
-model_path: "./output/model_ShapeStableSolverIgnoreColor.pth"
+model_path: "./output/model_ShapeStableSolver.pth"
 verbose_single: False
