@@ -1,7 +1,4 @@
 defaults:
-  - data: ShapeStableSolver_test
-  - model: ShapeStableSolver
-  - train: default
-
-model_path: "./output/model_ShapeStableSolver.pth"
-verbose_single: False
+  - data: FillerKeepInput_test
+  - model: FillerKeepInput
+  - test: default

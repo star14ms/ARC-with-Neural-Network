@@ -1,6 +1,4 @@
 defaults:
-  - data: ShapeStableSolver_train
-  - model: ShapeStableSolver
+  - data: FillerKeepInput_train
+  - model: FillerKeepInput
   - train: default
-
-save_path: "./output/"

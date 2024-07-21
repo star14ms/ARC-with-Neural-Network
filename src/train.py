@@ -12,23 +12,24 @@ from rich import print
 from rich.traceback import install
 install()
 
-from arc_prize import (
+from arc_prize.model import (
     get_model_class,
     DataConfig,
     TrainConfig,
-    ShapeStableSolverConfig,
-    ShapeStableSolverIgnoreColorConfig
+    FillerKeepInputConfig,
+    FillerKeepInputIgnoreColorConfig
 )
+from arc_prize.utils.lightning_custom import RichProgressBarCustom
 from data import ARCDataModule
-from utils.lightning_custom import RichProgressBarCustom
 from test import test
-from arc_prize.model_components.attn_input import ShapeStableSolver
+
 
 def train(config: DictConfig, model=None):
     hparams_data = OmegaConf.to_container(config.data.params, resolve=True)
     hparams_model = OmegaConf.to_container(config.model.params, resolve=True)
     hparams_train = OmegaConf.to_container(config.train.params, resolve=True)
     max_epochs = hparams_train.pop("epoch", None)
+    save_dir = hparams_train.pop("save_dir", None)
 
     datamodule = ARCDataModule(**hparams_data)
     
@@ -59,11 +60,11 @@ def train(config: DictConfig, model=None):
     trainer.fit(model, datamodule=datamodule)
 
     # Save the model to disk (optional)
-    os.makedirs(config.save_path, exist_ok=True)
-    model_path = config.save_path + '/model_{}.pth'.format(model.model.__class__.__name__)
-    torch.save(model.state_dict(), model_path)
+    os.makedirs(save_dir, exist_ok=True)
+    save_path = save_dir + '/model_{}.pth'.format(model.model.__class__.__name__)
+    torch.save(model.state_dict(), save_path)
     print('Seed used', torch.seed())
-    print('Model saved to:', model_path)
+    print('Model saved to:', save_path)
     
     return model
 
@@ -71,8 +72,8 @@ def train(config: DictConfig, model=None):
 cs = ConfigStore.instance()
 cs.store(group="data", name="base_data", node=DataConfig, package="data")
 cs.store(group="train", name="base_train", node=TrainConfig, package="train")
-cs.store(group="model", name="base_ShapeStableSolver", node=ShapeStableSolverConfig, package="model")
-cs.store(group="model", name="base_ShapeStableSolverIgnoreColor", node=ShapeStableSolverIgnoreColorConfig, package="model")
+cs.store(group="model", name="base_FillerKeepInput", node=FillerKeepInputConfig, package="model")
+cs.store(group="model", name="base_FillerKeepInputIgnoreColor", node=FillerKeepInputIgnoreColorConfig, package="model")
 
 
 @hydra.main(config_path=os.path.join('..', "configs"), config_name="train", version_base=None)
@@ -81,8 +82,8 @@ def main(config: DictConfig) -> None:
     model = train(config)
 
     # with open_dict(config):
-    #     config.model_path = config.save_path + '/model_{}.pth'.format(model.model.__class__.__name__)
-    #     config.verbose_single = False
+    #     config.test.params.model_path = config.train.params.save_dir + '/model_{}.pth'.format(model.model.__class__.__name__)
+    #     config.test.params.verbose_single = False
     #     config.data.params.augment_data = False
 
     # test(config, model)

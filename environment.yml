@@ -1,8 +1,8 @@
 name: arc-prize-2024
 channels:
   - pytorch
-  - defaults
   - conda-forge
+  - defaults
 dependencies:
   - appnope=0.1.4=pyhd8ed1ab_0
   - asttokens=2.4.1=pyhd8ed1ab_0
@@ -142,6 +142,7 @@ dependencies:
       - pip==24.1.2
       - protobuf==4.25.3
       - python-dateutil==2.9.0.post0
+      - python-graphviz==0.20.3
       - python-slugify==8.0.4
       - requests==2.32.3
       - rich==13.7.1

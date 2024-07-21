@@ -10,17 +10,17 @@ from rich.traceback import install
 from rich import print
 install()
 
-from arc_prize import (
+from arc_prize.model import (
     get_model_class,
     DataConfig, 
-    TrainConfig, 
-    ShapeStableSolverConfig,
-    ShapeStableSolverIgnoreColorConfig
+    TestConfig, 
+    FillerKeepInputConfig,
+    FillerKeepInputIgnoreColorConfig
 )
-from data import ARCDataset
-from utils.visualize import print_image_with_probs, plot_xyt, plot_xyts
+from arc_prize.utils.visualize import print_image_with_probs, plot_xyt, plot_xyts
 from arc_prize.preprocess import reconstruct_t_from_one_hot
-from arc_prize.model import ShapeStableSolver
+from data import ARCDataset
+
 
 def _test(config, model, dataset_train, dataset_test, device):
     for i, (inputs, outputs) in enumerate(dataset_train):
@@ -73,7 +73,7 @@ def _test(config, model, dataset_train, dataset_test, device):
             # y_pred = y_pred.view(H, W)
             
             # visualize
-            if config.verbose_single:
+            if config.test.params.verbose_single:
                 plot_xyt(x_origin.detach().cpu(), y_origin.detach().cpu(), t.detach().cpu())
             
             task_result.append((x_origin.detach().cpu(), y_origin.detach().cpu(), t.detach().cpu()))
@@ -84,7 +84,9 @@ def _test(config, model, dataset_train, dataset_test, device):
 def test(config, model=None):
     hparams_data = OmegaConf.to_container(config.data.params, resolve=True)
     hparams_model = OmegaConf.to_container(config.model.params, resolve=True)
+    hparmas_test = OmegaConf.to_container(config.test.params, resolve=True)
     base_path = hparams_data.pop('base_path')
+    model_path = hparmas_test.pop('model_path')
     del hparams_data['batch_size']
 
     if model is None or isinstance(model, type):
@@ -92,10 +94,10 @@ def test(config, model=None):
         model = model_class(**hparams_model, model=model if isinstance(model, type) else None)
         print(OmegaConf.to_yaml(config))
 
-        if config.model_path.endswith('.pth'):
-            state_dict = torch.load(config.model_path)
-        elif config.model_path.endswith('.ckpt'):
-            state_dict = torch.load(config.model_path)['state_dict']
+        if model_path.endswith('.pth'):
+            state_dict = torch.load(model_path)
+        elif model_path.endswith('.ckpt'):
+            state_dict = torch.load(model_path)['state_dict']
         model.load_state_dict(state_dict)
 
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
@@ -116,9 +118,9 @@ def test(config, model=None):
 
 cs = ConfigStore.instance()
 cs.store(group="data", name="base_data", node=DataConfig, package="data")
-cs.store(group="train", name="base_train", node=TrainConfig, package="train")
-cs.store(group="model", name="base_ShapeStableSolver", node=ShapeStableSolverConfig, package="arc_prize")
-cs.store(group="model", name="base_ShapeStableSolverIgnoreColor", node=ShapeStableSolverIgnoreColorConfig, package="arc_prize")
+cs.store(group="test", name="base_test", node=TestConfig, package="test")
+cs.store(group="model", name="base_FillerKeepInput", node=FillerKeepInputConfig, package="arc_prize")
+cs.store(group="model", name="base_FillerKeepInputIgnoreColor", node=FillerKeepInputIgnoreColorConfig, package="arc_prize")
 
 
 @hydra.main(config_path=os.path.join('..', "configs"), config_name="test", version_base=None)

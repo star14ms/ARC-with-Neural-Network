@@ -1,5 +1,5 @@
-from utils.visualize import plot_task
-from constants import COLORS
+from arc_prize.utils.visualize import plot_task
+from arc_prize.constants import COLORS
 from functools import partial
 from torch import tensor
 
@@ -145,7 +145,7 @@ if __name__ == '__main__':
     from rich import print
 
     from data import ARCDataset
-    from constants import get_challenges_solutions_filepath
+    from arc_prize.constants import get_challenges_solutions_filepath
 
     verbose = True
     data_category = 'train'

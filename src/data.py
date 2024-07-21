@@ -219,10 +219,10 @@ class ARCDataModule(LightningDataModule):
 
 if __name__ == '__main__':
     from rich import print
-    from utils.visualize import plot_task
+    from arc_prize.utils.visualize import plot_task
     import os
     
-    from constants import get_challenges_solutions_filepath
+    from arc_prize.constants import get_challenges_solutions_filepath
 
     data_category = 'train'
     fdir_to_save = None

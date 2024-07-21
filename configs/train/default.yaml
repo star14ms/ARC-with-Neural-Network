@@ -3,3 +3,4 @@ name: "default"
 params:
   epoch: 50
   lr: 0.01
+  save_dir: "./output/"
