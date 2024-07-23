@@ -58,8 +58,6 @@ class FillerKeepInputIgnoreColor(nn.Module):
         N, C, H, W = x.shape
 
         x = self.feature_extractor(x) # [N, C, H, W]
-        
-        x = x.permute(0, 2, 3, 1).reshape(N*H*W, -1) # [N*H*W, C]
         y = x[:, 1:].sum(dim=1).view(N, H, W)
 
         return y

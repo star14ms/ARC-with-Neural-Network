@@ -82,11 +82,12 @@ class Conv2dEncoderLayer(nn.Module):
         super().__init__()
         self.padding = padding
         self.pad_value = pad_value
+        self.fixed_kernel = fixed_kernel
 
         if fixed_kernel:
             self.conv = Conv2dFixedKernel(in_channels, kernel_size=kernel_size, stride=stride, padding=0)
         else:
-            self.conv = nn.Conv2d(in_channels, reduced_channels[0], kernel_size=kernel_size, stride=stride, padding=0, bias=False)
+            self.conv = nn.Conv2d(in_channels, reduced_channels[0], kernel_size=kernel_size, stride=stride, padding=1, bias=False)
         self.activation = nn.ReLU()
 
         self.linear_layers = nn.Sequential()
@@ -101,7 +102,8 @@ class Conv2dEncoderLayer(nn.Module):
 
     def forward(self, x):
         N, H, W = x.shape[0], x.shape[2], x.shape[3]
-        x = F.pad(x, (self.padding, self.padding, self.padding, self.padding), mode='constant', value=self.pad_value)
+        if self.fixed_kernel:
+            x = F.pad(x, (self.padding, self.padding, self.padding, self.padding), mode='constant', value=self.pad_value)
         x = self.activation(self.conv(x)) # [N, C, H, W]
         x = x.permute(0, 2, 3, 1).reshape(N*H*W, -1) # [N*H*W, C]
         x = self.linear_layers(x)
