@@ -12,8 +12,9 @@ from arc_prize.utils.visualize import plot_xyt
 
 class LightningModuleBase(pl.LightningModule):
     def __init__(self, lr=0.001, *args, **kwargs):
-        self.lr = lr
         super().__init__()
+        self.lr = lr
+        self.n_pixel_wrong_total_in_epoch = 0
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
@@ -27,25 +28,35 @@ class LightningModuleBase(pl.LightningModule):
 
     def test_dataloader(self) -> torch.Any:
         return super().test_dataloader()
+    
+    def on_train_batch_end(self, out, batch, batch_idx):
+        self.n_pixel_wrong_total_in_epoch += out['n_pixel_wrong_total']
+        return out
+
+    def on_train_epoch_end(self):
+        if self.n_pixel_wrong_total_in_epoch == 0:
+            save_path = f"./output/{self.model.__class__.__name__}_{self.current_epoch+1:02d}ep.ckpt"
+            self.trainer.save_checkpoint(save_path)
+            print(f"Model saved to: {save_path}")
+
+        # free up the memory
+        self.n_pixel_wrong_total_in_epoch = 0
 
 
 class FillerKeepInputL(LightningModuleBase):
     def __init__(self, lr=0.001, model=None, *args, **kwargs):
         super().__init__(lr, *args, **kwargs)
-       
-        if model is not None:
-            self.model = model(*args, **kwargs)
-        else:
-            self.model = FillerKeepInput(*args, **kwargs)
 
+        model = model if model is not None else FillerKeepInput
+        self.model = model(*args, **kwargs)
         self.loss_fn_source = nn.BCEWithLogitsLoss()
-        
+
         device = 'mps' if torch.backends.mps.is_available() else 'cpu'
         self.model.to(device)
     
-    def forward(self, inputs):
+    def forward(self, inputs, *args, **kwargs):
         # In Lightning, forward defines the prediction/inference actions
-        outputs = self.model(inputs)
+        outputs = self.model(inputs, *args, **kwargs)
         return outputs
 
     def training_step(self, batches):
@@ -67,9 +78,9 @@ class FillerKeepInputL(LightningModuleBase):
                 y_origin = torch.argmax(y_prob[0], dim=0).long() # [H, W]
                 t = reconstruct_t_from_one_hot(x_origin, t[0].detach().cpu())
                 n_pixel_wrong_total += (y_origin != t).sum().int()
-                
-            if i == total and (y_origin != t).sum().int() == 0:
-                plot_xyt(x_origin.detach().cpu(), y_origin.detach().cpu(), t.detach().cpu())
+
+            # if i == total-1: # and (y_origin != t).sum().int() == 0:
+            #     plot_xyt(x_origin.detach().cpu(), y_origin.detach().cpu(), t.detach().cpu())
 
             if i == total - 1:
                 break
@@ -78,26 +89,23 @@ class FillerKeepInputL(LightningModuleBase):
             loss.backward()
             opt.step()
 
-        print("Train loss: {:.6f}, N Pixels Wrong: {}".format(total_loss, n_pixel_wrong_total))
+        print("Epoch {} | Train loss: {:.6f} | N Pixels Wrong: {}".format(self.current_epoch+1, total_loss, n_pixel_wrong_total))
         self.log('Train loss', total_loss, prog_bar=True)
-        return loss
+        return {'loss': loss, 'n_pixel_wrong_total': n_pixel_wrong_total}
 
 
 class FillerKeepInputIgnoreColorL(LightningModuleBase):
     def __init__(self, lr=0.001, model=None, *args, **kwargs):
         super().__init__(lr, *args, **kwargs)
-        breakpoint()
-        if model is not None:
-            self.model = model(*args, **kwargs)
-        else:
-            self.model = FillerKeepInputIgnoreColor(*args, **kwargs)
 
+        model = model if model is not None else FillerKeepInputIgnoreColor
+        self.model = model(*args, **kwargs)
         self.loss_fn_source = nn.BCEWithLogitsLoss()
         
         device = 'mps' if torch.backends.mps.is_available() else 'cpu'
         self.model.to(device)
-    
-    def forward(self, inputs):
+
+    def forward(self, inputs, *args, **kwargs):
         # In Lightning, forward defines the prediction/inference actions
         return self.model(inputs)
 
@@ -115,11 +123,11 @@ class FillerKeepInputIgnoreColorL(LightningModuleBase):
             total_loss += loss
 
             with torch.no_grad():
-                x_origin = torch.argmax(x[0].detach().cpu(), dim=0).long() # [H, W]
                 y_prob = F.sigmoid(y.detach().cpu())
                 y_origin = torch.where(y_prob > 0.5, 1, 0).squeeze(0) # [C, H, W]
                 n_pixel_wrong_total += (y_origin != t.detach().cpu()).sum().int()
-                
+                # x_origin = torch.argmax(x[0].detach().cpu(), dim=0).long() # [H, W]
+
             # if i == total-8 and (y_origin != t.detach().cpu()).sum().int() == 0:
             #     plot_xyt(x_origin.detach().cpu(), y_origin.detach().cpu(), t[0].detach().cpu())
 
@@ -130,6 +138,6 @@ class FillerKeepInputIgnoreColorL(LightningModuleBase):
             loss.backward()
             opt.step()
 
-        print("Train loss: {:.6f}, N Pixels Wrong: {}".format(total_loss, n_pixel_wrong_total))
+        print("Epoch {} | Train loss: {:.6f} | N Pixels Wrong: {}".format(self.current_epoch+1, total_loss, n_pixel_wrong_total))
         self.log('Train loss', total_loss, prog_bar=True)
-        return loss
+        return {'loss': loss, 'n_pixel_wrong_total': n_pixel_wrong_total}

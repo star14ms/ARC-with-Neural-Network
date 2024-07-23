@@ -2,6 +2,7 @@
 import torch
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TensorBoardLogger
+from pytorch_lightning.callbacks import ModelCheckpoint
 import os
 
 import warnings
@@ -16,15 +17,16 @@ from arc_prize.model import (
     get_model_class,
     DataConfig,
     TrainConfig,
+    TestConfig,
     FillerKeepInputConfig,
     FillerKeepInputIgnoreColorConfig
 )
 from arc_prize.utils.lightning_custom import RichProgressBarCustom
 from data import ARCDataModule
-from test import test
+from test import test as test_fn
 
 
-def train(config: DictConfig, model=None):
+def train(config: DictConfig, model=None, test=False, return_model=False):
     hparams_data = OmegaConf.to_container(config.data.params, resolve=True)
     hparams_model = OmegaConf.to_container(config.model.params, resolve=True)
     hparams_train = OmegaConf.to_container(config.train.params, resolve=True)
@@ -37,6 +39,7 @@ def train(config: DictConfig, model=None):
         model_class = get_model_class(config.model.name if model is None else model.__name__)
         model = model_class(**hparams_model, **hparams_train, model=model if isinstance(model, type) else None)
         print(OmegaConf.to_yaml(config))
+        print(model)
 
     # Initialize a trainer
     logger = TensorBoardLogger("./src/lightning_logs/", name=model.__class__.__name__)
@@ -47,13 +50,16 @@ def train(config: DictConfig, model=None):
         'model_details': model.__str__(),
         'seed': torch.seed(),
     })
-    
+
     trainer = Trainer(
         max_epochs=max_epochs, 
         logger=logger, 
         log_every_n_steps=1, 
         accelerator='mps' if torch.backends.mps.is_available() else 'cpu',
-        callbacks=[RichProgressBarCustom()]
+        callbacks=[
+            RichProgressBarCustom(),
+            ModelCheckpoint(every_n_epochs=20, save_top_k=-1)
+        ]
     )
     
     # Train the model
@@ -66,12 +72,21 @@ def train(config: DictConfig, model=None):
     print('Seed used', torch.seed())
     print('Model saved to:', save_path)
     
-    return model
+    if test:
+        with open_dict(config):
+            config.test.params.model_path = config.train.params.save_dir + '/model_{}.pth'.format(model.model.__class__.__name__)
+            config.data.params.augment_data = False
+
+        test_fn(config, model)
+
+    if return_model:
+        return model
 
 
 cs = ConfigStore.instance()
 cs.store(group="data", name="base_data", node=DataConfig, package="data")
 cs.store(group="train", name="base_train", node=TrainConfig, package="train")
+cs.store(group="test", name="base_test", node=TestConfig, package="test")
 cs.store(group="model", name="base_FillerKeepInput", node=FillerKeepInputConfig, package="model")
 cs.store(group="model", name="base_FillerKeepInputIgnoreColor", node=FillerKeepInputIgnoreColorConfig, package="model")
 
@@ -79,14 +94,7 @@ cs.store(group="model", name="base_FillerKeepInputIgnoreColor", node=FillerKeepI
 @hydra.main(config_path=os.path.join('..', "configs"), config_name="train", version_base=None)
 def main(config: DictConfig) -> None:
     # warnings.filterwarnings('ignore')
-    model = train(config)
-
-    # with open_dict(config):
-    #     config.test.params.model_path = config.train.params.save_dir + '/model_{}.pth'.format(model.model.__class__.__name__)
-    #     config.test.params.verbose_single = False
-    #     config.data.params.augment_data = False
-
-    # test(config, model)
+    train(config, test=False, return_model=True)
 
 
 if __name__ == '__main__':

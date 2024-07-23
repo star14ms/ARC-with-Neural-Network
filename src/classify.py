@@ -2,6 +2,7 @@ from arc_prize.utils.visualize import plot_task
 from arc_prize.constants import COLORS
 from functools import partial
 from torch import tensor
+import torch
 
 
 class ARCDataClassifier:
@@ -10,7 +11,6 @@ class ARCDataClassifier:
     def is_same_shape(xs, ys, *args, **kwargs):
         return all(x.shape == y.shape for x, y in zip(xs, ys))
 
-    # Check if all inputs and outputs have the same shape
     def is_same_shape_f(bool=True):
         if bool is True:
             return lambda *args, **kwargs: ARCDataClassifier.is_same_shape(*args, **kwargs)
@@ -26,6 +26,12 @@ class ARCDataClassifier:
             if colors_input != colors_output:
                 return False
         return True
+    
+    def is_same_colors_f(bool=True):
+        if bool is True:
+            return lambda *args, **kwargs: ARCDataClassifier.is_same_colors(*args, **kwargs)
+        else:
+            return lambda *args, **kwargs: not ARCDataClassifier.is_same_colors(*args, **kwargs)
 
     # Check if the number of colors is the same in the input and output
     def is_same_number_of_colors(xs, ys, *args, **kwargs):
@@ -36,6 +42,12 @@ class ARCDataClassifier:
             if len(colors_input) != len(colors_output):
                 return False
         return True
+
+    def is_same_number_of_colors_f(bool=True):
+        if bool is True:
+            return lambda *args, **kwargs: ARCDataClassifier.is_same_number_of_colors(*args, **kwargs)
+        else:
+            return lambda *args, **kwargs: not ARCDataClassifier.is_same_number_of_colors(*args, **kwargs)
 
     # Check if the number of background colors is the same in the input and output
     def is_same_number_of_background_colors(xs, ys, *args, **kwargs):
@@ -110,15 +122,14 @@ class ARCDataClassifier:
 
     def is_dominent_color_stable(xs, ys, *args, **kwargs):
         for x, y in zip(xs, ys):
-            x_number_of_colors = tensor([(x == i).sum() for i in range(10)])
-            y_number_of_colors = tensor([(y == i).sum() for i in range(10)])
+            x_number_of_colors = tensor([x.eq(i).sum() for i in range(10)])
+            y_number_of_colors = tensor([y.eq(i).sum() for i in range(10)])
             x_dominant_color = x_number_of_colors.argmax()
             y_dominant_color = y_number_of_colors.argmax()
 
             if not (x_dominant_color == y_dominant_color and x_number_of_colors[x_dominant_color] == y_number_of_colors[y_dominant_color]):
                 return False
         return True
-
 
     def is_dominent_color_stable_f(bool=True):
         if bool is True:
@@ -134,9 +145,50 @@ class ARCDataClassifier:
         return partial(in_data_codes, *args, **kwargs)
 
 
+    def is_same_number_of_pixels_of_one_color(xs, ys, *args, **kwargs):
+        for x, y in zip(xs, ys):
+            x_number_of_colors = tensor([x.eq(i).sum() for i in range(10)])
+            y_number_of_colors = tensor([y.eq(i).sum() for i in range(10)])
+            if not (x_number_of_colors == y_number_of_colors).any():
+                return False
+        return True
+    
+    def is_same_number_of_pixels_of_one_color_f(bool=True, *args, **kwargs):
+        if bool is True:
+            return lambda *args, **kwargs: ARCDataClassifier.is_same_number_of_pixels_of_one_color(*args, **kwargs)
+        else:
+            return lambda *args, **kwargs: not ARCDataClassifier.is_same_number_of_pixels_of_one_color(*args, **kwargs)
+
+
+    def is_n_color_stable(xs, ys, *args, **kwargs):
+        for x, y in zip(xs, ys):
+            x_indexes_colors = [torch.where(x == i) for i in range(10)]
+            y_indexes_colors = [torch.where(y == i) for i in range(10)]
+
+            n_color_stable = [
+                len(x_indexes_colors[i][0]) != 0 and \
+                len(x_indexes_colors[i][0]) == len(y_indexes_colors[i][0]) and \
+                all(x_indexes_colors[i][0] == y_indexes_colors[i][0]) and \
+                all(x_indexes_colors[i][1] == y_indexes_colors[i][1]) \
+                    for i in range(10)
+            ]
+            n_color_stable = sum(n_color_stable)
+
+            if n_color_stable < kwargs['n']:
+                return False
+        return True
+    
+    def is_n_color_stable_f(n, *args, **kwargs):
+        return partial(ARCDataClassifier.is_n_color_stable, n=n, *args, **kwargs)
+
+
 def get_filter_funcs():
     filter_funcs = (
         ARCDataClassifier.in_data_codes_f(['00d62c1b']),
+        # ARCDataClassifier.is_same_shape_f(True),
+        # ARCDataClassifier.is_n_color_stable_f(1),
+        # ARCDataClassifier.is_same_colors_f(False),
+        # ARCDataClassifier.is_dominent_color_stable_f(True)
     )
     return filter_funcs
 
@@ -155,10 +207,11 @@ if __name__ == '__main__':
     # Example usage
     # filter_funcs = get_filter_funcs()
     filter_funcs = (
-        ARCDataClassifier.in_data_codes_f(['00d62c1b']),
-        # ARCDataClassifier.is_same_shape_f(True),
-        # ARCDataClassifier.is_n_m_colored_in_out_f(2, 3),
-        # ARCDataClassifier.are_input_output_similar_f(0.9),
+        # ARCDataClassifier.in_data_codes_f(['00d62c1b']),
+        ARCDataClassifier.is_same_shape_f(True),
+        ARCDataClassifier.is_n_color_stable_f(1),
+        ARCDataClassifier.is_same_colors_f(False),
+        ARCDataClassifier.is_dominent_color_stable_f(True)
     )
 
     dataset_train = ARCDataset(challenges, solutions, train=True, one_hot=False, filter_funcs=filter_funcs)

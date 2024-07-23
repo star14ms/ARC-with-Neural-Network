@@ -23,9 +23,13 @@ from data import ARCDataset
 
 
 def _test(config, model, dataset_train, dataset_test, device):
+    n_recurrance_feature_extraction = config.model.params.get('n_recurrance_feature_extraction', None)
+    kwargs = dict(n_recurrance_feature_extraction=n_recurrance_feature_extraction)
+
     for i, (inputs, outputs) in enumerate(dataset_train):
         task_result = []
         key = dataset_train.task_key(i)
+        len_train = len(inputs)
         
         inputs += dataset_test[i][0]
         outputs += dataset_test[i][1]
@@ -35,7 +39,7 @@ def _test(config, model, dataset_train, dataset_test, device):
             t = t.to(device)
             # print(x.shape, t.shape)
 
-            y = model(x.unsqueeze(0))
+            y = model(x.unsqueeze(0), **kwargs)
             y_prob = F.sigmoid(y)
             
             x_origin = torch.argmax(x, dim=0).long() # [H, W]
@@ -59,7 +63,13 @@ def _test(config, model, dataset_train, dataset_test, device):
                 correct_ratio = (y_origin == t).sum().float() / t.numel()
                 n_pixels_wrong = (y_origin != t).sum().int()
 
-            print('Task: {}, index: {}, correct {:2}%, N Pixels Wrong: {}'.format(key, j+1, correct_ratio*100, n_pixels_wrong))
+            print('Task: {} | {:>5} {} | {:>6.2f}% correct | {} Pixels Wrong'.format(
+                key, 
+                'train' if j < len_train else 'test', 
+                j+1 if j < len_train else j-len_train+1, 
+                correct_ratio*100, 
+                n_pixels_wrong
+            ))
             # print(y - y.min())
             # print_image_with_probs(y_prob.squeeze(0).detach().cpu(), y_pred.squeeze(0).detach().cpu(), t.squeeze(0).detach().cpu())
 

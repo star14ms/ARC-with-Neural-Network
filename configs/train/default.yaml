@@ -1,6 +1,6 @@
 name: "default"
 
 params:
-  epoch: 50
+  epoch: 100
   lr: 0.01
   save_dir: "./output/"
