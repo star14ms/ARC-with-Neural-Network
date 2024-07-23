@@ -97,7 +97,7 @@ def test(config, model=None):
     hparmas_test = OmegaConf.to_container(config.test.params, resolve=True)
     base_path = hparams_data.pop('base_path')
     model_path = hparmas_test.pop('model_path')
-    del hparams_data['batch_size']
+    del hparams_data['batch_size_max']
 
     if model is None or isinstance(model, type):
         model_class = get_model_class(config.model.name if model is None else model.__name__)

@@ -5,6 +5,9 @@ from pytorch_lightning import LightningDataModule
 
 from classify import get_filter_funcs
 from arc_prize.preprocess import one_hot_encode, one_hot_encode_changes
+from arc_prize.utils.transform import collate_fn_same_shape
+from lightning_fabric.utilities.data import suggested_max_num_workers
+from functools import partial
 
 
 class ARCDataset(Dataset):
@@ -172,7 +175,7 @@ class ARCDataLoader(DataLoader):
 
 
 class ARCDataModule(LightningDataModule):
-    def __init__(self, base_path='./data/arc-prize-2024/', batch_size=1, augment_data=False, cold_value=-1, ignore_color=False):
+    def __init__(self, base_path='./data/arc-prize-2024/', batch_size_max=1, shuffle=True, augment_data=False, cold_value=-1, ignore_color=False, local_world_size=1):
         super().__init__()
         self.base_path = base_path
         self.challenges_train = self.base_path + 'arc-agi_training_challenges.json'
@@ -182,10 +185,13 @@ class ARCDataModule(LightningDataModule):
         self.challenges_test = base_path + 'arc-agi_test_challenges.json'
         self.solutions_test = None
 
-        self.batch_size = batch_size
+        self.batch_size_max = batch_size_max
+        self.shuffle = shuffle
         self.augment_data = augment_data
         self.cold_value = cold_value
         self.ignore_color = ignore_color
+
+        self.num_workers = suggested_max_num_workers(local_world_size=local_world_size or 1)
         self.prepare_data()
 
     def prepare_data(self):
@@ -208,13 +214,16 @@ class ARCDataModule(LightningDataModule):
             self.test_dataset = ARCDataset(self.challenges_test, self.solutions_test, train=False, **kwargs)
 
     def train_dataloader(self):
-        return ARCDataLoader(self.train_dataset, batch_size=self.batch_size)
+        collate_fn = partial(collate_fn_same_shape, batch_size_max=self.batch_size_max, shuffle=self.shuffle)
+        return ARCDataLoader(self.train_dataset, batch_size=1, num_workers=self.num_workers, collate_fn=collate_fn)
 
     def val_dataloader(self):
-        return ARCDataLoader(self.val_dataset, batch_size=self.batch_size)
+        collate_fn = partial(collate_fn_same_shape, batch_size_max=self.batch_size_max, shuffle=self.shuffle)
+        return ARCDataLoader(self.val_dataset, batch_size=1, num_workers=self.num_workers, collate_fn=collate_fn)
 
     def test_dataloader(self):
-        return ARCDataLoader(self.test_dataset, batch_size=self.batch_size)
+        collate_fn = partial(collate_fn_same_shape, batch_size_max=1, shuffle=False)
+        return ARCDataLoader(self.test_dataset, batch_size=1, num_workers=self.num_workers, collate_fn=collate_fn)
 
 
 if __name__ == '__main__':
@@ -226,7 +235,7 @@ if __name__ == '__main__':
 
     data_category = 'train'
     fdir_to_save = None
-    # fdir_to_save = f'output/task_visualization/{data_category}/'
+    fdir_to_save = f'output/task_visualization/{data_category}/'
 
     # Example usage
     challenges, solutions = get_challenges_solutions_filepath(data_category)
@@ -244,11 +253,10 @@ if __name__ == '__main__':
         plot_task(dataset_train, dataset_test, index, data_category, fdir_to_save=fdir_to_save)
 
 
-    # # Example usage
-    # datamodule = ARCDataModule(base_path=base_path, batch_size=1)
+    # # Show Each Size of Batch
+    # datamodule = ARCDataModule(batch_size_max=8, augment_data=True)
 
-    # for task in datamodule.train_dataloader():
-    #     print(len(task))
+    # for task in datamodule.val_dataloader():
+    #     print('{} Data -> {} Batches'.format(sum([len(t) for x, t in task]), len(task)))
     #     for x, t in task:
-    #         print(x[0].shape, t[0].shape)
-    #         break
+    #         print(x.shape)
