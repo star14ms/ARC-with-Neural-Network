@@ -1,0 +1,5 @@
+name: "default"
+
+params:
+  model_path: "./output/model_FillerKeepInputIgnoreColor.pth"
+  verbose_single: False

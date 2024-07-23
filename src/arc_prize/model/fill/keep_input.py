@@ -2,7 +2,6 @@ import torch
 from torch import nn
 
 from arc_prize.model.components.convfixedkernel import Conv2dEncoderLayer
-from arc_prize.model.components.attention import ReductiveAttention
 
 
 class ConvSameColorFeatureExtractor(nn.Module):
@@ -13,11 +12,11 @@ class ConvSameColorFeatureExtractor(nn.Module):
         self.encoder = Conv2dEncoderLayer(1, reduced_channels_encoder, pad_value=pad_value, fixed_kernel=True)
         self.extender = Conv2dEncoderLayer(reduced_channels_encoder[-1], reduced_channels_decoder, pad_value=1)
         self.decoder_initial = nn.Sequential(
-            nn.Linear(self.V, d_feature, bias=True),
+            nn.Linear(self.V, d_feature, bias=False),
         )
 
         self.attn_conv = nn.TransformerDecoder(
-            nn.TransformerDecoderLayer(d_model=self.V, nhead=1, dim_feedforward=32, batch_first=True, bias=True),
+            nn.TransformerDecoderLayer(d_model=self.V, nhead=1, dim_feedforward=32, batch_first=True, bias=False),
             num_layers=1,
         )
         self.decoder_secondary_feature = nn.Sequential(
@@ -44,14 +43,14 @@ class ConvSameColorFeatureExtractor(nn.Module):
             x_c = self.encoder(x_c) # [N, V, H, W]
             V = x_c.shape[1]
 
-            feature = x_c.permute(0, 2, 3, 1).view(N*H*W, self.V)
+            feature = x_c.permute(0, 2, 3, 1).reshape(N*H*W, self.V)
             feature = self.decoder_initial(feature).view(N*H*W, -1, 1).repeat(1, 1, V) # [N*H*W, V2, V]
             V2 = feature.shape[1]
 
             for _ in range(n_recurrance_feature_extraction): ### Varialble (Depends on Input Shape)
                 x_c = self.extender(x_c) # [N, V, H, W]
 
-                feature = self.attn_conv(feature, x_c.permute(0, 2, 3, 1).view(N*H*W, 1, V))
+                feature = self.attn_conv(feature, x_c.permute(0, 2, 3, 1).reshape(N*H*W, 1, V))
             feature = feature.view(N, H, W, V2, V).view(N*H*W*V2, V)
 
             x_c = self.decoder_secondary_feature(feature) # [N*H*W*V2, 1]

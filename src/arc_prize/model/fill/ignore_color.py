@@ -35,7 +35,7 @@ class ConvFeatureExtractor(nn.Module):
             x_c_seqs = torch.cat(x_c_seqs) # [S, N, V, H, W]
 
             S, N, V, H, W = x_c_seqs.shape
-            x_c_seqs = x_c_seqs.permute(1, 3, 4, 0, 2).view(N*H*W, S, V)
+            x_c_seqs = x_c_seqs.permute(1, 3, 4, 0, 2).reshape(N*H*W, S, V)
             x_c = self.attn_reduction(x_c_seqs, self.attn_h.repeat(N*H*W, 1)).view(N, H, W, V).permute(0, 3, 1, 2)
             x_c = self.decoder(x_c).view(N, H, W) # [1, N, H, W]
             x_list.append(x_c.unsqueeze(0))

@@ -13,10 +13,13 @@ def collate_fn_same_shape(task, batch_size_max=4, shuffle=True):
         Tuple of the form (images, targets).
     """
     xs, ts = task[0]
-    
-    if not all(x.shape == t.shape for x, t in zip(xs, ts)) and not all(x.shape[1:] == t.shape for x, t in zip(xs, ts)):
-        return xs, ts
-      
+
+    if batch_size_max == 1 or (
+            not all(x.shape == t.shape for x, t in zip(xs, ts)) and \
+            not all(x.shape[1:] == t.shape for x, t in zip(xs, ts))
+        ):
+        return [x.unsqueeze(0) for x in xs], [t.unsqueeze(0) for t in ts]
+
     if shuffle:
         indices = torch.randperm(len(xs)).tolist()
         xs = [xs[i] for i in indices]
@@ -28,7 +31,7 @@ def collate_fn_same_shape(task, batch_size_max=4, shuffle=True):
     
     xs_new = []
     ts_new = []
-    for shape, indices in shape_dict.items():
+    for _, indices in shape_dict.items():
         n_piece = 1
         batch_size = len(indices)
         
@@ -36,18 +39,14 @@ def collate_fn_same_shape(task, batch_size_max=4, shuffle=True):
             n_piece += 1
             batch_size = len(indices) // n_piece
 
-        for i in range(0, len(indices), batch_size):
-            images = [xs[j] for j in indices[i:i+batch_size]]
-            targets = [ts[j] for j in indices[i:i+batch_size]]
-            xs_new.append(torch.stack(images))
-            ts_new.append(torch.stack(targets))
+        xs_same_shape = [torch.stack([xs[j] for j in indices[i:i+batch_size]]) for i in range(0, len(indices), batch_size)]
+        ts_same_shape = [torch.stack([ts[j] for j in indices[i:i+batch_size]]) for i in range(0, len(indices), batch_size)]
 
-        if len(indices) % batch_size == 0:
-            continue
+        if len(indices) % batch_size != 0:
+            xs_same_shape.append(torch.stack([xs[j] for j in indices[-len(indices) % batch_size:]]))
+            ts_same_shape.append(torch.stack([ts[j] for j in indices[-len(indices) % batch_size:]]))
 
-        images = [xs[j] for j in indices[i+batch_size:]]
-        targets = [ts[j] for j in indices[i+batch_size:]]
-        xs_new.append(torch.stack(images))
-        ts_new.append(torch.stack(targets))
+        xs_new.extend(xs_same_shape)
+        ts_new.extend(ts_same_shape)
         
     return xs_new, ts_new

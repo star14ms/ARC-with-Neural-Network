@@ -1,5 +1,5 @@
 defaults:
   - data: FillerKeepInput_train
   - model: FillerKeepInput
-  - train: default
-  - test: default
+  - train: FillerKeepInput
+  - test: FillerKeepInput

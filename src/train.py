@@ -33,8 +33,6 @@ def train(config: DictConfig, model=None, test=False, return_model=False):
     max_epochs = hparams_train.pop("epoch", None)
     save_dir = hparams_train.pop("save_dir", None)
 
-    datamodule = ARCDataModule(**hparams_data)
-    
     if model is None or isinstance(model, type):
         model_class = get_model_class(config.model.name if model is None else model.__name__)
         model = model_class(**hparams_model, **hparams_train, model=model if isinstance(model, type) else None)
@@ -61,13 +59,14 @@ def train(config: DictConfig, model=None, test=False, return_model=False):
             ModelCheckpoint(every_n_epochs=20, save_top_k=-1)
         ]
     )
-    
+    datamodule = ARCDataModule(local_world_size=trainer.num_devices, **hparams_data)
+
     # Train the model
     trainer.fit(model, datamodule=datamodule)
 
     # Save the model to disk (optional)
     os.makedirs(save_dir, exist_ok=True)
-    save_path = save_dir + '/model_{}.pth'.format(model.model.__class__.__name__)
+    save_path = save_dir + 'model_{}.pth'.format(model.model.__class__.__name__)
     torch.save(model.state_dict(), save_path)
     print('Seed used', torch.seed())
     print('Model saved to:', save_path)

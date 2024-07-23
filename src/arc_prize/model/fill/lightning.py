@@ -7,7 +7,7 @@ from rich import print
 from arc_prize.model.fill.keep_input import FillerKeepInput
 from arc_prize.model.fill.ignore_color import FillerKeepInputIgnoreColor
 from arc_prize.preprocess import one_hot_encode, one_hot_encode_changes, reconstruct_t_from_one_hot
-from arc_prize.utils.visualize import plot_xyt
+from arc_prize.utils.visualize import plot_xyt, visualize_one_hot_coded_data
 
 
 class LightningModuleBase(pl.LightningModule):
@@ -15,6 +15,7 @@ class LightningModuleBase(pl.LightningModule):
         super().__init__()
         self.lr = lr
         self.n_pixel_wrong_total_in_epoch = 0
+        self.saved_when_no_pixel_wrong = False
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
@@ -34,10 +35,12 @@ class LightningModuleBase(pl.LightningModule):
         return out
 
     def on_train_epoch_end(self):
-        if self.n_pixel_wrong_total_in_epoch == 0:
+        if self.n_pixel_wrong_total_in_epoch == 0 and not self.saved_when_no_pixel_wrong:
             save_path = f"./output/{self.model.__class__.__name__}_{self.current_epoch+1:02d}ep.ckpt"
             self.trainer.save_checkpoint(save_path)
             print(f"Model saved to: {save_path}")
+            
+            self.saved_when_no_pixel_wrong = True
 
         # free up the memory
         self.n_pixel_wrong_total_in_epoch = 0
@@ -73,14 +76,15 @@ class FillerKeepInputL(LightningModuleBase):
             total_loss += loss
 
             with torch.no_grad():
-                x_origin = torch.argmax(x[0].detach().cpu(), dim=0).long() # [H, W]
+                # x_origin = torch.argmax(x.detach().cpu(), dim=1).long() # [H, W]
                 y_prob = F.sigmoid(y.detach().cpu())
-                y_origin = torch.argmax(y_prob[0], dim=0).long() # [H, W]
-                t = reconstruct_t_from_one_hot(x_origin, t[0].detach().cpu())
-                n_pixel_wrong_total += (y_origin != t).sum().int()
+                y_origin = torch.argmax(y_prob, dim=1).long() # [H, W]
+                t_origin = torch.argmax(t.detach().cpu(), dim=1).long()
+                n_pixel_wrong_total += (y_origin != t_origin).sum().int()
+                # visualize_one_hot_coded_data(x[0], y[0], t[0])
 
             # if i == total-1: # and (y_origin != t).sum().int() == 0:
-            #     plot_xyt(x_origin.detach().cpu(), y_origin.detach().cpu(), t.detach().cpu())
+            #     plot_xyt(x_origin.detach().cpu(), y_origin.detach().cpu(), t_origin.detach().cpu())
 
             if i == total - 1:
                 break

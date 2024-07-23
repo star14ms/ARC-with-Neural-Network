@@ -98,7 +98,7 @@ class Conv2dEncoderLayer(nn.Module):
         if out_one_channel:
             self.linear_layers.add_module('out', nn.Linear(reduced_channels[-1], 1, bias=False))
 
-        self.norm = nn.InstanceNorm2d(reduced_channels[-1])
+        self.norm = nn.InstanceNorm2d(reduced_channels[-1] if not out_one_channel else 1)
 
     def forward(self, x):
         N, H, W = x.shape[0], x.shape[2], x.shape[3]

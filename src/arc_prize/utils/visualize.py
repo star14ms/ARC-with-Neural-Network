@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 from matplotlib import colors
 import os
+import torch
 
 from arc_prize.constants import COLORS
 
@@ -193,4 +194,43 @@ def print_image_with_probs(*images):
                     print('⬜️', end='')
             print('  ', end='')
         print()
+    print()
+
+
+def visualize_one_hot_coded_data(*images):
+    '''
+    ⬛️ = 0, 🟦 = 1, 🟥 = 2, 🟩 = 3, 🟨 = 4, ⬜️ = 5, 🟪 = 6, 🟧 = 7, 🌐 = 8, 🟫 = 9
+    '''
+    images = [torch.argmax(image, dim=0).long() for image in images]
+
+    for h in range(max(images, key=lambda x: x.shape[0]).shape[0]):
+        line = ''
+        for image in images:
+            if h >= image.shape[0]:
+                line += image.shape[1] * '  ' + '  '
+                continue
+            for w in range(image.shape[1]):
+                pixel_key = image[h, w].item()
+                if pixel_key == 0:
+                    line += '⬛️'
+                elif pixel_key == 1:
+                    line += '🟦'
+                elif pixel_key == 2:
+                    line += '🟥'
+                elif pixel_key == 3:
+                    line += '🟩'
+                elif pixel_key == 4:
+                    line += '🟨'
+                elif pixel_key == 5:
+                    line += '⬜️'
+                elif pixel_key == 6:
+                    line += '🟪'
+                elif pixel_key == 7:
+                    line += '🟧'
+                elif pixel_key == 8:
+                    line += '🌐'
+                elif pixel_key == 9:
+                    line += '🟫'
+            line += '  '
+        print(line)
     print()

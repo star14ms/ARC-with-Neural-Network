@@ -8,6 +8,7 @@ from arc_prize.preprocess import one_hot_encode, one_hot_encode_changes
 from arc_prize.utils.transform import collate_fn_same_shape
 from lightning_fabric.utilities.data import suggested_max_num_workers
 from functools import partial
+from classify import ARCDataClassifier
 
 
 class ARCDataset(Dataset):
@@ -62,14 +63,8 @@ class ARCDataset(Dataset):
         task_id = list(self.challenges.keys())[idx]
         challenge = self.challenges[task_id]
         solution = self.solutions[task_id] if self.solutions is not None else None
-
-        # if self.train:
-        #     inputs = [pair for pair in challenge['train']['input']]
-        #     outputs = [pair for pair in challenge['train']['output']]
-        # else:
-        #     inputs = [pair for pair in challenge['test']['input']]
-        #     outputs = [pair for pair in solution] if self.solutions is not None else []
-
+        for x, t in zip(challenge['train']['input'], challenge['train']['output']):
+            assert x.shape == t.shape, f"Input and output shapes do not match: {x.shape} != {t.shape}"
         if self.train:
             inputs = [one_hot_encode(task_item, cold_value=self.cold_value) if self.one_hot else task_item for task_item in challenge['train']['input']]
             if self.ignore_color:
@@ -91,7 +86,7 @@ class ARCDataset(Dataset):
     def augment_data(self):
         '''Augment data by adding all possible rotated and flipped versions without duplicates'''
 
-        def unique_augmentations(tensor):
+        def unique_augmentations(tensor, indices_to_remove=None):
             # Create a set to store unique transformations
             unique_transforms = set()
             # List to store the augmented tensors
@@ -110,15 +105,22 @@ class ARCDataset(Dataset):
                 torch.rot90(torch.flip(tensor, [1]), 3, (0, 1)),  # 270 degrees + horizontal flip
                 torch.rot90(torch.flip(tensor, [0]), 3, (0, 1)),  # 270 degrees + vertical flip
             ]
+            
+            if indices_to_remove is not None:
+                transformations = [t for i, t in enumerate(transformations) if i not in indices_to_remove]
+                return transformations
 
             # Add unique transformations to the list
-            for t in transformations:
+            indices_to_remove = set()
+            for i, t in enumerate(transformations):
                 t_tuple = tuple(t.numpy().ravel())
                 if t_tuple not in unique_transforms:
                     unique_transforms.add(t_tuple)
                     augmented_tensors.append(t)
+                else:
+                    indices_to_remove.add(i)
             
-            return augmented_tensors
+            return augmented_tensors, indices_to_remove
 
         # Augment challenges data
         augmented_challenges = {}
@@ -134,9 +136,11 @@ class ARCDataset(Dataset):
             
             # Apply augmentations to train data
             for input_tensor, output_tensor in zip(task['train']['input'], task['train']['output']):
-                augmented_task['train']['input'].extend(unique_augmentations(input_tensor))
-                augmented_task['train']['output'].extend(unique_augmentations(output_tensor))
-            
+                unique_inputs, indices_to_remove = unique_augmentations(input_tensor)
+                unique_outputs = unique_augmentations(output_tensor, indices_to_remove)
+                augmented_task['train']['input'].extend(unique_inputs)
+                augmented_task['train']['output'].extend(unique_outputs)
+
             # Apply augmentations to test data (input only)
             for input_tensor in task['test']['input']:
                 augmented_task['test']['input'].extend(unique_augmentations(input_tensor))
@@ -175,7 +179,7 @@ class ARCDataLoader(DataLoader):
 
 
 class ARCDataModule(LightningDataModule):
-    def __init__(self, base_path='./data/arc-prize-2024/', batch_size_max=1, shuffle=True, augment_data=False, cold_value=-1, ignore_color=False, local_world_size=1):
+    def __init__(self, base_path='./data/arc-prize-2024/', batch_size_max=1, shuffle=True, augment_data=False, cold_value=-1, ignore_color=False, num_workers=None, local_world_size=1):
         super().__init__()
         self.base_path = base_path
         self.challenges_train = self.base_path + 'arc-agi_training_challenges.json'
@@ -191,7 +195,7 @@ class ARCDataModule(LightningDataModule):
         self.cold_value = cold_value
         self.ignore_color = ignore_color
 
-        self.num_workers = suggested_max_num_workers(local_world_size=local_world_size or 1)
+        self.num_workers = num_workers if num_workers else suggested_max_num_workers(local_world_size=local_world_size or 1)
         self.prepare_data()
 
     def prepare_data(self):
@@ -207,7 +211,7 @@ class ARCDataModule(LightningDataModule):
         # Assign train/val datasets for use in dataloaders
         if stage == 'fit' or stage is None:
             self.train_dataset = ARCDataset(self.challenges_train, self.solutions_train, train=True, **kwargs)
-            self.val_dataset = ARCDataset(self.challenges_val, self.solutions_val, train=False, **kwargs)
+            self.val_dataset = ARCDataset(self.challenges_val, self.solutions_val, train=True, **kwargs)
 
         # Assign test dataset for use in dataloader(s)
         if stage == 'test' or stage is None:
@@ -215,15 +219,15 @@ class ARCDataModule(LightningDataModule):
 
     def train_dataloader(self):
         collate_fn = partial(collate_fn_same_shape, batch_size_max=self.batch_size_max, shuffle=self.shuffle)
-        return ARCDataLoader(self.train_dataset, batch_size=1, num_workers=self.num_workers, collate_fn=collate_fn)
+        return ARCDataLoader(self.train_dataset, batch_size=1, num_workers=self.num_workers, persistent_workers=True, collate_fn=collate_fn)
 
     def val_dataloader(self):
-        collate_fn = partial(collate_fn_same_shape, batch_size_max=self.batch_size_max, shuffle=self.shuffle)
-        return ARCDataLoader(self.val_dataset, batch_size=1, num_workers=self.num_workers, collate_fn=collate_fn)
+        collate_fn = partial(collate_fn_same_shape, batch_size_max=self.batch_size_max, shuffle=False)
+        return ARCDataLoader(self.val_dataset, batch_size=1, num_workers=self.num_workers, persistent_workers=True, collate_fn=collate_fn)
 
     def test_dataloader(self):
         collate_fn = partial(collate_fn_same_shape, batch_size_max=1, shuffle=False)
-        return ARCDataLoader(self.test_dataset, batch_size=1, num_workers=self.num_workers, collate_fn=collate_fn)
+        return ARCDataLoader(self.test_dataset, batch_size=1, num_workers=self.num_workers, persistent_workers=True, collate_fn=collate_fn)
 
 
 if __name__ == '__main__':
@@ -235,7 +239,7 @@ if __name__ == '__main__':
 
     data_category = 'train'
     fdir_to_save = None
-    fdir_to_save = f'output/task_visualization/{data_category}/'
+    # fdir_to_save = f'output/task_visualization/{data_category}/'
 
     # Example usage
     challenges, solutions = get_challenges_solutions_filepath(data_category)
@@ -254,7 +258,7 @@ if __name__ == '__main__':
 
 
     # # Show Each Size of Batch
-    # datamodule = ARCDataModule(batch_size_max=8, augment_data=True)
+    # datamodule = ARCDataModule(batch_size_max=4, augment_data=True)
 
     # for task in datamodule.val_dataloader():
     #     print('{} Data -> {} Batches'.format(sum([len(t) for x, t in task]), len(task)))

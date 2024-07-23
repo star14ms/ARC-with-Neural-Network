@@ -1,5 +1,0 @@
-name: "default"
-
-params:
-  model_path: "./output/model_FillerKeepInput.pth"
-  verbose_single: False
