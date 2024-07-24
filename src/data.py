@@ -1,6 +1,6 @@
+import json
 import torch
 from torch.utils.data import Dataset, DataLoader
-import json
 from pytorch_lightning import LightningDataModule
 
 from classify import get_filter_funcs
@@ -8,7 +8,6 @@ from arc_prize.preprocess import one_hot_encode, one_hot_encode_changes
 from arc_prize.utils.transform import collate_fn_same_shape
 from lightning_fabric.utilities.data import suggested_max_num_workers
 from functools import partial
-from classify import ARCDataClassifier
 
 
 class ARCDataset(Dataset):
@@ -63,8 +62,7 @@ class ARCDataset(Dataset):
         task_id = list(self.challenges.keys())[idx]
         challenge = self.challenges[task_id]
         solution = self.solutions[task_id] if self.solutions is not None else None
-        for x, t in zip(challenge['train']['input'], challenge['train']['output']):
-            assert x.shape == t.shape, f"Input and output shapes do not match: {x.shape} != {t.shape}"
+        
         if self.train:
             inputs = [one_hot_encode(task_item, cold_value=self.cold_value) if self.one_hot else task_item for task_item in challenge['train']['input']]
             if self.ignore_color:
@@ -124,6 +122,7 @@ class ARCDataset(Dataset):
 
         # Augment challenges data
         augmented_challenges = {}
+        indices_to_remove_test = {}
         for key, task in self.challenges.items():
             augmented_task = {}
             augmented_task['train'] = {
@@ -143,7 +142,9 @@ class ARCDataset(Dataset):
 
             # Apply augmentations to test data (input only)
             for input_tensor in task['test']['input']:
-                augmented_task['test']['input'].extend(unique_augmentations(input_tensor))
+                unique_inputs, indices_to_remove = unique_augmentations(input_tensor)
+                augmented_task['test']['input'].extend(unique_inputs)
+                indices_to_remove_test[key] = indices_to_remove
             
             augmented_challenges[key] = augmented_task
         self.challenges = augmented_challenges
@@ -155,11 +156,10 @@ class ARCDataset(Dataset):
         augmented_solutions = {}
         for key, task in self.solutions.items():
             augmented_task = []
-            augmented_task.extend(task)
             
             # Apply augmentations to each task item
             for task_item in task:
-                augmented_task.extend(unique_augmentations(task_item))
+                augmented_task.extend(unique_augmentations(task_item, indices_to_remove_test[key]))
             
             augmented_solutions[key] = augmented_task
         self.solutions = augmented_solutions
@@ -179,7 +179,7 @@ class ARCDataLoader(DataLoader):
 
 
 class ARCDataModule(LightningDataModule):
-    def __init__(self, base_path='./data/arc-prize-2024/', batch_size_max=1, shuffle=True, augment_data=False, cold_value=-1, ignore_color=False, num_workers=None, local_world_size=1):
+    def __init__(self, base_path='./data/arc-prize-2024/', batch_size_max=1, shuffle=True, augment_data=False, cold_value=-1, ignore_color=False, num_workers=None, local_world_size=1, debug=False):
         super().__init__()
         self.base_path = base_path
         self.challenges_train = self.base_path + 'arc-agi_training_challenges.json'
@@ -196,6 +196,7 @@ class ARCDataModule(LightningDataModule):
         self.ignore_color = ignore_color
 
         self.num_workers = num_workers if num_workers else suggested_max_num_workers(local_world_size=local_world_size or 1)
+        self.kwargs_dataloader = {} if not debug else {'num_workers': self.num_workers, 'persistent_workers': True}
         self.prepare_data()
 
     def prepare_data(self):
@@ -219,15 +220,15 @@ class ARCDataModule(LightningDataModule):
 
     def train_dataloader(self):
         collate_fn = partial(collate_fn_same_shape, batch_size_max=self.batch_size_max, shuffle=self.shuffle)
-        return ARCDataLoader(self.train_dataset, batch_size=1, num_workers=self.num_workers, persistent_workers=True, collate_fn=collate_fn)
+        return ARCDataLoader(self.train_dataset, batch_size=1, collate_fn=collate_fn, **self.kwargs_dataloader)
 
     def val_dataloader(self):
         collate_fn = partial(collate_fn_same_shape, batch_size_max=self.batch_size_max, shuffle=False)
-        return ARCDataLoader(self.val_dataset, batch_size=1, num_workers=self.num_workers, persistent_workers=True, collate_fn=collate_fn)
+        return ARCDataLoader(self.val_dataset, batch_size=1, collate_fn=collate_fn, **self.kwargs_dataloader)
 
     def test_dataloader(self):
         collate_fn = partial(collate_fn_same_shape, batch_size_max=1, shuffle=False)
-        return ARCDataLoader(self.test_dataset, batch_size=1, num_workers=self.num_workers, persistent_workers=True, collate_fn=collate_fn)
+        return ARCDataLoader(self.test_dataset, batch_size=1, collate_fn=collate_fn, **self.kwargs_dataloader)
 
 
 if __name__ == '__main__':
