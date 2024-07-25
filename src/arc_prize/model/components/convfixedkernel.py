@@ -125,11 +125,14 @@ def test_backward(model, x):
     opt.zero_grad()
     y = model(x)
     loss = loss_fn(y, torch.ones_like(y))
+    print(loss)
     loss.backward()
     opt.step()
 
 
 if __name__ == '__main__':
+    from rich import print
+
     class SampleModel(nn.Module):
         def __init__(self, input_size):
             super().__init__()

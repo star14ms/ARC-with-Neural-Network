@@ -7,7 +7,7 @@ from rich import print
 from arc_prize.model.fill.keep_input import FillerKeepInput
 from arc_prize.model.fill.ignore_color import FillerKeepInputIgnoreColor
 from arc_prize.preprocess import one_hot_encode, one_hot_encode_changes, reconstruct_t_from_one_hot
-from arc_prize.utils.visualize import plot_xyt, visualize_one_hot_coded_data
+from arc_prize.utils.visualize import plot_xyt, visualize_image_using_emoji
 
 
 class LightningModuleBase(pl.LightningModule):
@@ -81,7 +81,7 @@ class FillerKeepInputL(LightningModuleBase):
                 y_origin = torch.argmax(y_prob, dim=1).long() # [H, W]
                 t_origin = torch.argmax(t.detach().cpu(), dim=1).long()
                 n_pixel_wrong_total += (y_origin != t_origin).sum().int()
-                # visualize_one_hot_coded_data(x[0], y[0], t[0])
+                # visualize_image_using_emoji(x[0], y[0], t[0])
 
             # if i == total-1: # and (y_origin != t).sum().int() == 0:
             #     plot_xyt(x_origin.detach().cpu(), y_origin.detach().cpu(), t_origin.detach().cpu())
@@ -94,6 +94,7 @@ class FillerKeepInputL(LightningModuleBase):
             opt.step()
 
         print("Epoch {} | Train loss: {:.6f} | N Pixels Wrong: {}".format(self.current_epoch+1, total_loss, n_pixel_wrong_total))
+        self.log('N Pixels Wrong', n_pixel_wrong_total.to(torch.float32))
         self.log('Train loss', total_loss, prog_bar=True)
         return {'loss': loss, 'n_pixel_wrong_total': n_pixel_wrong_total}
 
@@ -144,4 +145,5 @@ class FillerKeepInputIgnoreColorL(LightningModuleBase):
 
         print("Epoch {} | Train loss: {:.6f} | N Pixels Wrong: {}".format(self.current_epoch+1, total_loss, n_pixel_wrong_total))
         self.log('Train loss', total_loss, prog_bar=True)
+        self.log('N Pixels Wrong', n_pixel_wrong_total.to(torch.float32))
         return {'loss': loss, 'n_pixel_wrong_total': n_pixel_wrong_total}

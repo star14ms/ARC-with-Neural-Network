@@ -197,11 +197,12 @@ def print_image_with_probs(*images):
     print()
 
 
-def visualize_one_hot_coded_data(*images):
+def visualize_image_using_emoji(*images, one_hot_coded=True):
     '''
     ⬛️ = 0, 🟦 = 1, 🟥 = 2, 🟩 = 3, 🟨 = 4, ⬜️ = 5, 🟪 = 6, 🟧 = 7, 🌐 = 8, 🟫 = 9
     '''
-    images = [torch.argmax(image, dim=0).long() for image in images]
+    if one_hot_coded:
+        images = [torch.argmax(image, dim=0).long() for image in images]
 
     for h in range(max(images, key=lambda x: x.shape[0]).shape[0]):
         line = ''
