@@ -214,10 +214,9 @@ if __name__ == '__main__':
         ARCDataClassifier.is_dominent_color_stable_f(True)
     )
 
-    dataset_train = ARCDataset(challenges, solutions, train=True, one_hot=False, filter_funcs=filter_funcs)
-    dataset_test = ARCDataset(challenges, solutions, train=False, one_hot=False, filter_funcs=filter_funcs)
-    print(f'Data size: {len(dataset_train)}')
-    
+    dataset = ARCDataset(challenges, solutions, one_hot=False, filter_funcs=filter_funcs)
+    print(f'Data size: {len(dataset)}')
+
     # Visualize a task
-    for index in range(len(dataset_train)):
-        plot_task(dataset_train, dataset_test, index, data_category)
+    for index in range(len(dataset)):
+        plot_task(dataset, index, data_category)

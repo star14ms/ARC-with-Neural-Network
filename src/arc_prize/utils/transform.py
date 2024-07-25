@@ -12,13 +12,17 @@ def collate_fn_same_shape(task, batch_size_max=4, shuffle=True):
     Returns:
         Tuple of the form (images, targets).
     """
-    xs, ts = task[0]
+    xs, ts, xs_test, ts_test = task[0]
 
     if batch_size_max == 1 or (
             not all(x.shape == t.shape for x, t in zip(xs, ts)) and \
             not all(x.shape[1:] == t.shape for x, t in zip(xs, ts))
         ):
-        return [x.unsqueeze(0) for x in xs], [t.unsqueeze(0) for t in ts]
+        return \
+            [x.unsqueeze(0) for x in xs], \
+            [t.unsqueeze(0) for t in ts], \
+            [x.unsqueeze(0) for x in xs_test], \
+            [t.unsqueeze(0) for t in ts_test]
 
     if shuffle:
         indices = torch.randperm(len(xs)).tolist()
@@ -49,4 +53,4 @@ def collate_fn_same_shape(task, batch_size_max=4, shuffle=True):
         xs_new.extend(xs_same_shape)
         ts_new.extend(ts_same_shape)
         
-    return xs_new, ts_new
+    return xs_new, ts_new, [x.unsqueeze(0) for x in xs_test], [t.unsqueeze(0) for t in ts_test]

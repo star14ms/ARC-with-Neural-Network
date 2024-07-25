@@ -11,7 +11,7 @@ from functools import partial
 
 
 class ARCDataset(Dataset):
-    def __init__(self, challenge_json, solution_json=None, train=True, filter_funcs=get_filter_funcs(), one_hot=True, cold_value=-1, augment_data=False, ignore_color=False):
+    def __init__(self, challenge_json, solution_json=None, filter_funcs=get_filter_funcs(), one_hot=True, cold_value=-1, augment_data=False, ignore_color=False):
         self.one_hot = one_hot
         self.cold_value = cold_value
         self.ignore_color = ignore_color
@@ -50,8 +50,6 @@ class ARCDataset(Dataset):
             self.solutions = {key: [torch.tensor(task_item) for task_item in task] for key, task in self.solutions.items()}
             self.solutions = {key: task for key, task in self.solutions.items() if key in self.challenges}
             
-        self.train = train  # toggle to switch between train and test data
-        
         if augment_data:
             self.augment_data()
 
@@ -63,20 +61,22 @@ class ARCDataset(Dataset):
         challenge = self.challenges[task_id]
         solution = self.solutions[task_id] if self.solutions is not None else None
         
-        if self.train:
-            inputs = [one_hot_encode(task_item, cold_value=self.cold_value) if self.one_hot else task_item for task_item in challenge['train']['input']]
-            if self.ignore_color:
-                outputs = [one_hot_encode_changes(task_item_in, task_item_out)[0] if self.one_hot else task_item_out for task_item_in, task_item_out in zip(challenge['train']['input'], challenge['train']['output'])]
-            else:
-                outputs = [one_hot_encode(task_item_out, cold_value=0) if self.one_hot else task_item_out for task_item_out in challenge['train']['output']]
+        xs_train = [one_hot_encode(task_item, cold_value=self.cold_value) if self.one_hot else task_item for task_item in challenge['train']['input']]
+        if self.ignore_color:
+            ts_train = [one_hot_encode_changes(task_item_in, task_item_out)[0] if self.one_hot else task_item_out for task_item_in, task_item_out in zip(challenge['train']['input'], challenge['train']['output'])]
         else:
-            inputs = [one_hot_encode(task_item, cold_value=self.cold_value) if self.one_hot else task_item for task_item in challenge['test']['input']]
-            if self.ignore_color:
-                outputs = [one_hot_encode_changes(task_item_in, task_item_out)[0] if self.one_hot else task_item_out for task_item_in, task_item_out in zip(challenge['test']['input'], solution)] if self.solutions is not None else []
-            else:
-                outputs = [one_hot_encode(task_item_out, cold_value=0) if self.one_hot else task_item_out for task_item_out in solution] if self.solutions is not None else []
+            ts_train = [one_hot_encode(task_item_out, cold_value=0) if self.one_hot else task_item_out for task_item_out in challenge['train']['output']]
 
-        return inputs, outputs
+        xs_test = [one_hot_encode(task_item, cold_value=self.cold_value) if self.one_hot else task_item for task_item in challenge['test']['input']]
+
+        if self.solutions is None: 
+            ts_test = []
+        elif self.ignore_color:
+            ts_test = [one_hot_encode_changes(task_item_in, task_item_out)[0] if self.one_hot else task_item_out for task_item_in, task_item_out in zip(challenge['test']['input'], solution)]
+        else:
+            ts_test = [one_hot_encode(task_item_out, cold_value=0) if self.one_hot else task_item_out for task_item_out in solution]
+
+        return xs_train, ts_train, xs_test, ts_test
 
     def task_key(self, idx):
         return list(self.challenges.keys())[idx]
@@ -171,9 +171,9 @@ class ARCDataLoader(DataLoader):
         
     def __iter__(self):
         for batch in super().__iter__():
-            xs, ts = batch
-            yield list(zip(xs, ts))
-            
+            xs_train, ts_train, xs_test, ts_test = batch
+            yield list(zip(xs_train, ts_train)), list(zip(xs_test, ts_test))
+
     def __len__(self):
         return super().__len__()
 
@@ -211,12 +211,12 @@ class ARCDataModule(LightningDataModule):
 
         # Assign train/val datasets for use in dataloaders
         if stage == 'fit' or stage is None:
-            self.train_dataset = ARCDataset(self.challenges_train, self.solutions_train, train=True, **kwargs)
-            self.val_dataset = ARCDataset(self.challenges_val, self.solutions_val, train=True, **kwargs)
+            self.train_dataset = ARCDataset(self.challenges_train, self.solutions_train, **kwargs)
+            self.val_dataset = ARCDataset(self.challenges_val, self.solutions_val, **kwargs)
 
         # Assign test dataset for use in dataloader(s)
         if stage == 'test' or stage is None:
-            self.test_dataset = ARCDataset(self.challenges_test, self.solutions_test, train=False, **kwargs)
+            self.test_dataset = ARCDataset(self.challenges_test, self.solutions_test, **kwargs)
 
     def train_dataloader(self):
         collate_fn = partial(collate_fn_same_shape, batch_size_max=self.batch_size_max, shuffle=self.shuffle)
@@ -238,30 +238,30 @@ if __name__ == '__main__':
     
     from arc_prize.constants import get_challenges_solutions_filepath
 
-    data_category = 'train'
-    fdir_to_save = None
-    # fdir_to_save = f'output/task_visualization/{data_category}/'
+    # data_category = 'train'
+    # fdir_to_save = None
+    # # fdir_to_save = f'output/task_visualization/{data_category}/'
 
-    # Example usage
-    challenges, solutions = get_challenges_solutions_filepath(data_category)
-    dataset_train = ARCDataset(challenges, solutions, train=True, one_hot=False, filter_funcs=())
-    dataset_test = ARCDataset(challenges, solutions, train=False, one_hot=False, filter_funcs=())
-    print(f'Data size: {len(dataset_train)}')
+    # # Example usage
+    # challenges, solutions = get_challenges_solutions_filepath(data_category)
+    # dataset = ARCDataset(challenges, solutions, one_hot=False, filter_funcs=())
+    # print(f'Data size: {len(dataset)}')
 
-    # save figure images
-    if fdir_to_save is not None:
-        fdir_to_save = os.path.join(os.getcwd(), fdir_to_save)
-        os.makedirs(fdir_to_save, exist_ok=True)
+    # # save figure images
+    # if fdir_to_save is not None:
+    #     fdir_to_save = os.path.join(os.getcwd(), fdir_to_save)
+    #     os.makedirs(fdir_to_save, exist_ok=True)
 
-    # Visualize a task
-    for index in range(len(dataset_train)):
-        plot_task(dataset_train, dataset_test, index, data_category, fdir_to_save=fdir_to_save)
+    # # Visualize a task
+    # for index in range(len(dataset)):
+    #     plot_task(dataset, index, data_category, fdir_to_save=fdir_to_save)
 
 
-    # # Show Each Size of Batch
-    # datamodule = ARCDataModule(batch_size_max=4, augment_data=True)
+    # Show Each Size of Batch
+    datamodule = ARCDataModule(batch_size_max=1, augment_data=True)
 
-    # for task in datamodule.val_dataloader():
-    #     print('{} Data -> {} Batches'.format(sum([len(t) for x, t in task]), len(task)))
-    #     for x, t in task:
-    #         print(x.shape)
+    for task in datamodule.train_dataloader():
+        print('{} Data -> {} Batches'.format(sum([len(xs) for xs, *_ in task[0]]), len(task[0])))
+        for xs_train, ts_train in task[0]:
+            print(xs_train.shape)
+        break

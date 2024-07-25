@@ -22,17 +22,17 @@ from arc_prize.preprocess import reconstruct_t_from_one_hot
 from data import ARCDataset
 
 
-def _test(config, model, dataset_train, dataset_test, device):
+def _test(config, model, dataset_train, device):
     n_recurrance_feature_extraction = config.model.params.get('n_recurrance_feature_extraction', None)
     kwargs = dict(n_recurrance_feature_extraction=n_recurrance_feature_extraction)
 
-    for i, (inputs, outputs) in enumerate(dataset_train):
+    for i, (inputs, outputs, inputs_test, outputs_test) in enumerate(dataset_train):
         task_result = []
         key = dataset_train.task_key(i)
         len_train = len(inputs)
         
-        inputs += dataset_test[i][0]
-        outputs += dataset_test[i][1]
+        inputs += inputs_test
+        outputs += outputs_test
         
         for j, (x, t) in enumerate(zip(inputs, outputs)):
             x = x.to(device)
@@ -118,12 +118,11 @@ def test(config, model=None):
     challenges = base_path + 'arc-agi_training_challenges.json'
     solutions = base_path + 'arc-agi_training_solutions.json'
 
-    dataset_train = ARCDataset(challenges, solutions, train=True, **hparams_data)
-    dataset_test = ARCDataset(challenges, solutions, train=False, **hparams_data)
+    dataset = ARCDataset(challenges, solutions, **hparams_data)
     torch.set_printoptions(sci_mode=False, precision=1)
 
     with torch.no_grad():
-        _test(config, model, dataset_train, dataset_test, device)
+        _test(config, model, dataset, device)
 
 
 cs = ConfigStore.instance()

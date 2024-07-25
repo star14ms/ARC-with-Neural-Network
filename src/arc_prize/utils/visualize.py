@@ -6,7 +6,7 @@ import torch
 from arc_prize.constants import COLORS
 
 
-def plot_task(dataset_train, dataset_test, idx, data_category, fdir_to_save=None):
+def plot_task(dataset, idx, data_category, fdir_to_save=None):
     """Plots the train and test pairs of a specified task, using the ARC color scheme."""
 
     def plot_one(input_matrix, ax, train_or_test, input_or_output, cmap, norm):
@@ -22,9 +22,8 @@ def plot_task(dataset_train, dataset_test, idx, data_category, fdir_to_save=None
         else:
             ax.set_title(train_or_test + ' ' + input_or_output, fontweight='bold')
 
-    task_key = dataset_train.task_key(idx)  # Get the task ID
-    train_inputs, train_outputs = dataset_train[idx]  # Load the first task
-    test_inputs, test_outputs = dataset_test[idx]  # Load the first task
+    task_key = dataset.task_key(idx)  # Get the task ID
+    train_inputs, train_outputs, test_inputs, test_outputs = dataset[idx]  # Load the first task
     
     num_train = len(train_inputs)
     num_test = len(test_inputs)

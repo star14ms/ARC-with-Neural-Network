@@ -63,13 +63,14 @@ class FillerKeepInputL(LightningModuleBase):
         return outputs
 
     def training_step(self, batches):
-        total_loss = 0
-        total = len(batches)
+        batches_train, _ = batches
+        total = len(batches_train)
         opt = self.optimizers()
+        total_loss = 0
         n_pixel_wrong_total = 0
 
         # Process each batch
-        for i, (x, t) in enumerate(batches):
+        for i, (x, t) in enumerate(batches_train):
             # forward + backward + optimize
             y = self.model(x)
             loss = self.loss_fn_source(y, t)
@@ -115,13 +116,14 @@ class FillerKeepInputIgnoreColorL(LightningModuleBase):
         return self.model(inputs)
 
     def training_step(self, batches):
-        total_loss = 0
-        total = len(batches)
+        batches_train, _ = batches
+        total = len(batches_train)
         opt = self.optimizers()
+        total_loss = 0
         n_pixel_wrong_total = 0
 
         # Process each batch
-        for i, (x, t) in enumerate(batches):
+        for i, (x, t) in enumerate(batches_train):
             # forward + backward + optimize
             y = self.model(x)
             loss = self.loss_fn_source(y, t)
