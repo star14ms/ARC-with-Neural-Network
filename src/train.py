@@ -7,7 +7,7 @@ import os
 import warnings
 import hydra
 from hydra.core.config_store import ConfigStore
-from omegaconf import OmegaConf, DictConfig, open_dict
+from omegaconf import OmegaConf, DictConfig
 from rich import print
 from rich.traceback import install
 install()
@@ -29,12 +29,16 @@ def train(config: DictConfig, model=None, test=False, return_model=False):
     hparams_data = OmegaConf.to_container(config.data.params, resolve=True)
     hparams_model = OmegaConf.to_container(config.model.params, resolve=True)
     hparams_train = OmegaConf.to_container(config.train.params, resolve=True)
-    max_epochs, batch_size_max, lr, save_dir, ckpt_path = \
+    max_epochs, batch_size_max, augment_data, lr, save_dir, ckpt_path = \
         hparams_train.get('max_epochs', None), \
         hparams_train.get('batch_size_max', None), \
+        hparams_train.get('augment_data', None), \
         hparams_train.get('lr', None), \
         hparams_train.get('save_dir', None), \
         hparams_train.get('ckpt_path', None)
+
+    hparams_data['batch_size_max'] = batch_size_max
+    hparams_data['augment_data'] = augment_data
 
     if model is None or isinstance(model, type):
         model = model if isinstance(model, type) else None
@@ -62,7 +66,7 @@ def train(config: DictConfig, model=None, test=False, return_model=False):
             # ModelCheckpoint(every_n_epochs=50, save_top_k=3, monitor='epoch', mode='max')
         ]
     )
-    datamodule = ARCDataModule(local_world_size=trainer.num_devices, batch_size_max=batch_size_max, **hparams_data)
+    datamodule = ARCDataModule(local_world_size=trainer.num_devices, **hparams_data)
 
     # Train the model
     trainer.fit(model, datamodule=datamodule, ckpt_path=ckpt_path)
@@ -75,9 +79,6 @@ def train(config: DictConfig, model=None, test=False, return_model=False):
     print('Model saved to:', save_path)
     
     if test:
-        with open_dict(config):
-            config.data.params.augment_data = False
-
         test_fn(config, model)
 
     if return_model:

@@ -1,4 +1,4 @@
 defaults:
-  - data: FillerKeepInput_test
+  - data: FillerKeepInput
   - model: FillerKeepInput
   - test: FillerKeepInput

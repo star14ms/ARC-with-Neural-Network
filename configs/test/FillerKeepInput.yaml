@@ -2,5 +2,6 @@ name: "FillerKeepInput"
 
 params:
   model_path: "./output/FillerKeepInput.ckpt"
+  augment_data: False
   verbose_single: False
   n_recurrance_feature_extraction: null

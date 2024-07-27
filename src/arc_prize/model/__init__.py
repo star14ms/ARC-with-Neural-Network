@@ -8,26 +8,29 @@ def get_model_class(model_name: str):
         FillerKeepInputIgnoreColorL,
     )
 
-    if model_name in ['FillerKeepInput', 'FillerKeepInputL']:
-        model_class = FillerKeepInputL
-    elif model_name in ['FillerKeepInputIgnoreColor', 'FillerKeepInputIgnoreColorL']:
-        model_class = FillerKeepInputIgnoreColorL
+    model_classes = [
+        FillerKeepInputL,
+        FillerKeepInputIgnoreColorL,
+    ]
+
+    for model_class in model_classes:
+        model_class_name = model_class.__name__
+        if model_name == model_class_name or model_name + 'L' == model_class_name:
+            return model_class
     else:
         raise ValueError(f"Model name {model_name} not found")
 
-    return model_class
 
 @dataclass
 class DataConfig:
     name: str = 'default'
     cold_value: int = -1
-    augment_data: bool = False
     ignore_color: bool = False
 
 @dataclass
 class TrainConfig:
-    name: str = 'default'
     max_epochs: int = 1
+    augment_data: bool = True
     batch_size_max: int = 8
     lr: float = 0.01
     save_dir: str = "./output/"
@@ -37,6 +40,7 @@ class TrainConfig:
 class TestConfig:
     model_path: str = "./output/model_FillerKeepInput.ckpt"
     verbose_single: bool = False
+    augment_data: bool = False
 
 @dataclass
 class ModelConfig:
@@ -49,7 +53,7 @@ class FillerKeepInputConfig:
     reduced_channels_decoder: List[int] = (128, 32)
     pad_value: int = -1
     d_conv_feature: int = 16
-    d_color_feature: int = 32
+    d_class_feature: int = 32
 
 @dataclass
 class FillerKeepInputIgnoreColorConfig:

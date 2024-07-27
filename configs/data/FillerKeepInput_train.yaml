@@ -1,7 +1,0 @@
-name: "FillerKeepInput"
-
-params:
-  base_path: "./data/arc-prize-2024/"
-  cold_value: -1
-  augment_data: True
-  ignore_color: False

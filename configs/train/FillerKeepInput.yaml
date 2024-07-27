@@ -1,8 +1,9 @@
-name: "default"
+name: "FillerKeepInput"
 
 params:
   max_epochs: 250
   batch_size_max: 8
+  augment_data: False
   lr: 0.01
   save_dir: "./output/"
   ckpt_path: null

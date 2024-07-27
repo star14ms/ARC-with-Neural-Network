@@ -6,6 +6,10 @@ COLORS = [
 
 
 def get_challenges_solutions_filepath(data_category, base_path='./data/arc-prize-2024/'):
+    '''
+    Parameters:
+    - data_category: str: `train`, `val`, or `test`
+    '''
     if data_category == 'train':
         challenges = base_path + 'arc-agi_training_challenges.json'
         solutions = base_path + 'arc-agi_training_solutions.json'

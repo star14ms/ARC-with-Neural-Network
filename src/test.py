@@ -18,12 +18,13 @@ from arc_prize.model import (
     FillerKeepInputConfig,
     FillerKeepInputIgnoreColorConfig
 )
-from arc_prize.utils.visualize import print_image_with_probs, plot_xyt, plot_xyts, visualize_image_using_emoji
+from arc_prize.utils.visualize import plot_xyt, plot_xyts, visualize_image_using_emoji
 from arc_prize.preprocess import reconstruct_t_from_one_hot
+from arc_prize.constants import get_challenges_solutions_filepath
 from data import ARCDataset
 
 
-def _test(config, model, dataset_train, device):
+def _test(config, model, dataset_train, device, verbose_single):
     n_recurrance_feature_extraction = config.test.params.get('n_recurrance_feature_extraction', None)
     kwargs = dict(n_recurrance_feature_extraction=n_recurrance_feature_extraction) if n_recurrance_feature_extraction else {}
 
@@ -70,12 +71,12 @@ def _test(config, model, dataset_train, device):
             ))
             
             # visualize
-            if config.test.params.verbose_single:
+            if verbose_single:
                 plot_xyt(x_origin, y_origin, t_origin)
             else:
                 task_result.append((x_origin, y_origin, t_origin))
 
-        if not config.test.params.verbose_single:
+        if not verbose_single:
             plot_xyts(task_result, title_prefix=key)
 
 
@@ -83,8 +84,11 @@ def test(config, model=None):
     hparams_data = OmegaConf.to_container(config.data.params, resolve=True)
     hparams_model = OmegaConf.to_container(config.model.params, resolve=True)
     hparmas_test = OmegaConf.to_container(config.test.params, resolve=True)
-    base_path = hparams_data.pop('base_path')
-    model_path = hparmas_test.pop('model_path')
+    base_path = hparams_data.pop('base_path', None)
+    model_path, augment_data, verbose_single = \
+        hparmas_test.get('model_path', None), \
+        hparmas_test.get('augment_data', None), \
+        hparmas_test.get('verbose_single', None)
 
     if model is None or isinstance(model, type):
         model_class = get_model_class(config.model.name if model is None else model.__name__)
@@ -102,14 +106,12 @@ def test(config, model=None):
     model.to(device)
 
     # Reading files
-    challenges = base_path + 'arc-agi_training_challenges.json'
-    solutions = base_path + 'arc-agi_training_solutions.json'
-
-    dataset = ARCDataset(challenges, solutions, **hparams_data)
+    challenges, solutions = get_challenges_solutions_filepath(data_category='train', base_path=base_path)
+    dataset = ARCDataset(challenges, solutions, augment_data=augment_data, **hparams_data)
     torch.set_printoptions(sci_mode=False, precision=1)
 
     with torch.no_grad():
-        _test(config, model, dataset, device)
+        _test(config, model, dataset, device, verbose_single)
 
 
 cs = ConfigStore.instance()

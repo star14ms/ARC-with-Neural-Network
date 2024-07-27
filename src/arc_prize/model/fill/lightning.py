@@ -10,12 +10,12 @@ from arc_prize.utils.visualize import plot_xyt, visualize_image_using_emoji
 
 
 class LightningModuleBase(pl.LightningModule):
-    def __init__(self, lr=0.001, save_n_perfect_epoch_threshold=4, *args, **kwargs):
+    def __init__(self, lr=0.001, save_n_perfect_epoch=4, *args, **kwargs):
         super().__init__()
         self.lr = lr
-        self.n_pixel_wrong_total_in_epoch = 0
+        self.n_pixels_wrong_in_epoch = 0
         self.n_continuous_epoch_no_pixel_wrong = 0
-        self.save_n_perfect_epoch_threshold = save_n_perfect_epoch_threshold
+        self.save_n_perfect_epoch = save_n_perfect_epoch
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
@@ -31,22 +31,22 @@ class LightningModuleBase(pl.LightningModule):
         return super().test_dataloader()
     
     def on_train_batch_end(self, out, batch, batch_idx):
-        self.n_pixel_wrong_total_in_epoch += out['n_pixel_wrong_total']
+        self.n_pixels_wrong_in_epoch += out['n_pixels_wrong']
         return out
 
     def on_train_epoch_end(self):
-        if self.n_pixel_wrong_total_in_epoch == 0:
+        if self.n_pixels_wrong_in_epoch == 0:
             self.n_continuous_epoch_no_pixel_wrong += 1
         else:
             self.n_continuous_epoch_no_pixel_wrong = 0
 
-        if self.n_continuous_epoch_no_pixel_wrong == self.save_n_perfect_epoch_threshold:
+        if self.n_continuous_epoch_no_pixel_wrong == self.save_n_perfect_epoch:
             save_path = f"./output/{self.model.__class__.__name__}_{self.current_epoch+1:02d}ep.ckpt"
             self.trainer.save_checkpoint(save_path)
             print(f"Model saved to: {save_path}")
 
         # free up the memory
-        self.n_pixel_wrong_total_in_epoch = 0
+        self.n_pixels_wrong_in_epoch = 0
 
 
 class FillerKeepInputL(LightningModuleBase):
@@ -66,7 +66,7 @@ class FillerKeepInputL(LightningModuleBase):
         total = len(batches_train)
         opt = self.optimizers()
         total_loss = 0
-        n_pixel_wrong_total = 0
+        n_pixels_wrong = 0
 
         # Process each batch
         for i, (x, t) in enumerate(batches_train):
@@ -79,7 +79,7 @@ class FillerKeepInputL(LightningModuleBase):
                 # y_prob = F.softmax(y.detach().cpu(), dim=1)
                 y_origin = torch.argmax(y.detach().cpu(), dim=1).long() # [H, W]
                 t_origin = torch.argmax(t.detach().cpu(), dim=1).long()
-                n_pixel_wrong_total += (y_origin != t_origin).sum().int()
+                n_pixels_wrong += (y_origin != t_origin).sum().int()
                 # visualize_image_using_emoji(x[0], y[0], t[0])
 
             # if i == total-1: # and (y_origin != t).sum().int() == 0:
@@ -92,10 +92,10 @@ class FillerKeepInputL(LightningModuleBase):
             loss.backward()
             opt.step()
 
-        print("Epoch {} | Train loss: {:.6f} | N Pixels Wrong: {}".format(self.current_epoch+1, total_loss, n_pixel_wrong_total))
-        self.log('N Pixels Wrong', n_pixel_wrong_total.float())
+        print("Epoch {} | Train loss: {:.6f} | N Pixels Wrong: {}".format(self.current_epoch+1, total_loss, n_pixels_wrong))
+        self.log('N Pixels Wrong', n_pixels_wrong.float())
         self.log('Train loss', total_loss, prog_bar=True)
-        return {'loss': loss, 'n_pixel_wrong_total': n_pixel_wrong_total}
+        return {'loss': loss, 'n_pixels_wrong': n_pixels_wrong}
 
 
 class FillerKeepInputIgnoreColorL(LightningModuleBase):
@@ -115,7 +115,7 @@ class FillerKeepInputIgnoreColorL(LightningModuleBase):
         total = len(batches_train)
         opt = self.optimizers()
         total_loss = 0
-        n_pixel_wrong_total = 0
+        n_pixels_wrong = 0
 
         # Process each batch
         for i, (x, t) in enumerate(batches_train):
@@ -127,7 +127,7 @@ class FillerKeepInputIgnoreColorL(LightningModuleBase):
             with torch.no_grad():
                 y_prob = F.sigmoid(y.detach().cpu())
                 y_origin = torch.where(y_prob > 0.5, 1, 0).squeeze(0) # [C, H, W]
-                n_pixel_wrong_total += (y_origin != t.detach().cpu()).sum().int()
+                n_pixels_wrong += (y_origin != t.detach().cpu()).sum().int()
                 # x_origin = torch.argmax(x[0].detach().cpu(), dim=0).long() # [H, W]
 
             # if i == total-8 and (y_origin != t.detach().cpu()).sum().int() == 0:
@@ -140,7 +140,7 @@ class FillerKeepInputIgnoreColorL(LightningModuleBase):
             loss.backward()
             opt.step()
 
-        print("Epoch {} | Train loss: {:.6f} | N Pixels Wrong: {}".format(self.current_epoch+1, total_loss, n_pixel_wrong_total))
+        print("Epoch {} | Train loss: {:.6f} | N Pixels Wrong: {}".format(self.current_epoch+1, total_loss, n_pixels_wrong))
         self.log('Train loss', total_loss, prog_bar=True)
-        self.log('N Pixels Wrong', n_pixel_wrong_total.float())
-        return {'loss': loss, 'n_pixel_wrong_total': n_pixel_wrong_total}
+        self.log('N Pixels Wrong', n_pixels_wrong.float())
+        return {'loss': loss, 'n_pixels_wrong': n_pixels_wrong}
