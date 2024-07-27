@@ -6,16 +6,16 @@ from rich import print
 
 from arc_prize.model.fill.keep_input import FillerKeepInput
 from arc_prize.model.fill.ignore_color import FillerKeepInputIgnoreColor
-from arc_prize.preprocess import one_hot_encode, one_hot_encode_changes, reconstruct_t_from_one_hot
 from arc_prize.utils.visualize import plot_xyt, visualize_image_using_emoji
 
 
 class LightningModuleBase(pl.LightningModule):
-    def __init__(self, lr=0.001, *args, **kwargs):
+    def __init__(self, lr=0.001, save_n_perfect_epoch_threshold=4, *args, **kwargs):
         super().__init__()
         self.lr = lr
         self.n_pixel_wrong_total_in_epoch = 0
-        self.saved_when_no_pixel_wrong = False
+        self.n_continuous_epoch_no_pixel_wrong = 0
+        self.save_n_perfect_epoch_threshold = save_n_perfect_epoch_threshold
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
@@ -35,12 +35,15 @@ class LightningModuleBase(pl.LightningModule):
         return out
 
     def on_train_epoch_end(self):
-        if self.n_pixel_wrong_total_in_epoch == 0 and not self.saved_when_no_pixel_wrong:
+        if self.n_pixel_wrong_total_in_epoch == 0:
+            self.n_continuous_epoch_no_pixel_wrong += 1
+        else:
+            self.n_continuous_epoch_no_pixel_wrong = 0
+
+        if self.n_continuous_epoch_no_pixel_wrong == self.save_n_perfect_epoch_threshold:
             save_path = f"./output/{self.model.__class__.__name__}_{self.current_epoch+1:02d}ep.ckpt"
             self.trainer.save_checkpoint(save_path)
             print(f"Model saved to: {save_path}")
-            
-            self.saved_when_no_pixel_wrong = True
 
         # free up the memory
         self.n_pixel_wrong_total_in_epoch = 0
@@ -59,8 +62,7 @@ class FillerKeepInputL(LightningModuleBase):
     
     def forward(self, inputs, *args, **kwargs):
         # In Lightning, forward defines the prediction/inference actions
-        outputs = self.model(inputs, *args, **kwargs)
-        return outputs
+        return self.model(inputs, *args, **kwargs)
 
     def training_step(self, batches):
         batches_train, *_ = batches

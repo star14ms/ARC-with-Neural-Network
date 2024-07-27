@@ -32,6 +32,7 @@ def train(config: DictConfig, model=None, test=False, return_model=False):
     hparams_train = OmegaConf.to_container(config.train.params, resolve=True)
     max_epochs = hparams_train.pop("epoch", None)
     save_dir = hparams_train.pop("save_dir", None)
+    ckpt_path = hparams_train.pop("ckpt_path", None)
 
     if model is None or isinstance(model, type):
         model_class = get_model_class(config.model.name if model is None else model.__name__)
@@ -56,24 +57,24 @@ def train(config: DictConfig, model=None, test=False, return_model=False):
         accelerator='mps' if torch.backends.mps.is_available() else 'cpu',
         callbacks=[
             RichProgressBarCustom(),
-            ModelCheckpoint(every_n_epochs=20, save_top_k=-1)
+            # ModelCheckpoint(every_n_epochs=50, save_top_k=3, monitor='epoch', mode='max')
         ]
     )
     datamodule = ARCDataModule(local_world_size=trainer.num_devices, **hparams_data)
 
     # Train the model
-    trainer.fit(model, datamodule=datamodule)
+    trainer.fit(model, datamodule=datamodule, ckpt_path=ckpt_path)
 
     # Save the model to disk (optional)
     os.makedirs(save_dir, exist_ok=True)
-    save_path = save_dir + '{}.pth'.format(model.model.__class__.__name__)
-    torch.save(model.state_dict(), save_path)
+    save_path = os.path.join(save_dir, '{}.ckpt'.format(model.model.__class__.__name__))
+    trainer.save_checkpoint(save_path)
     print('Seed used', torch.seed())
     print('Model saved to:', save_path)
     
     if test:
         with open_dict(config):
-            config.test.params.model_path = config.train.params.save_dir + '/model_{}.pth'.format(model.model.__class__.__name__)
+            config.test.params.model_path = save_path
             config.data.params.augment_data = False
 
         test_fn(config, model)

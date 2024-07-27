@@ -4,3 +4,4 @@ params:
   epoch: 60
   lr: 0.01
   save_dir: "./output/"
+  ckpt_path: null

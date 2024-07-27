@@ -29,10 +29,12 @@ class DataConfig:
 class TrainConfig:
     name: str = 'default'
     epoch: int = 1
-    
+    save_dir: str = "./output/"
+    ckpt_path: str | None = None
+
 @dataclass
 class TestConfig:
-    model_path: str = "./output/model_FillerKeepInput.pth"
+    model_path: str = "./output/model_FillerKeepInput.ckpt"
     verbose_single: bool = False
 
 @dataclass

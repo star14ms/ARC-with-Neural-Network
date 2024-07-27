@@ -1,5 +1,5 @@
 name: "default"
 
 params:
-  model_path: "./output/FillerKeepInputIgnoreColor.pth"
+  model_path: "./output/FillerKeepInputIgnoreColor.ckpt"
   verbose_single: False

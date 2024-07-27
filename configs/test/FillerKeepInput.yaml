@@ -1,6 +1,6 @@
 name: "FillerKeepInput"
 
 params:
-  model_path: "./output/FillerKeepInput.pth"
+  model_path: "./output/FillerKeepInput.ckpt"
   verbose_single: False
   n_recurrance_feature_extraction: null
