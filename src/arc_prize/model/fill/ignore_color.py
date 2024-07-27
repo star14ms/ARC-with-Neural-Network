@@ -50,7 +50,7 @@ class ConvFeatureExtractor(nn.Module):
 
 
 class FillerKeepInputIgnoreColor(nn.Module):
-    def __init__(self, pad_value=-1, reduced_channels_encoder=[512, 128, 32], reduced_channels_decoder=[128, 32], n_classes=10, hidden_size=64):
+    def __init__(self, pad_value=-1, reduced_channels_encoder=[512, 128, 32], reduced_channels_decoder=[128, 32]):
         super().__init__()
         self.feature_extractor = ConvFeatureExtractor(pad_value, reduced_channels_encoder, reduced_channels_decoder)
 

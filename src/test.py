@@ -23,12 +23,12 @@ from data import ARCDataset
 
 
 def _test(config, model, dataset_train, device):
-    n_recurrance_feature_extraction = config.model.params.get('n_recurrance_feature_extraction', None)
+    n_recurrance_feature_extraction = config.test.params.get('n_recurrance_feature_extraction', None)
+    
     kwargs = dict(n_recurrance_feature_extraction=n_recurrance_feature_extraction)
 
-    for i, (inputs, outputs, inputs_test, outputs_test) in enumerate(dataset_train):
+    for i, (inputs, outputs, inputs_test, outputs_test, key) in enumerate(dataset_train):
         task_result = []
-        key = dataset_train.task_key(i)
         len_train = len(inputs)
         
         inputs += inputs_test

@@ -63,7 +63,7 @@ class FillerKeepInputL(LightningModuleBase):
         return outputs
 
     def training_step(self, batches):
-        batches_train, _ = batches
+        batches_train, *_ = batches
         total = len(batches_train)
         opt = self.optimizers()
         total_loss = 0
@@ -116,7 +116,7 @@ class FillerKeepInputIgnoreColorL(LightningModuleBase):
         return self.model(inputs)
 
     def training_step(self, batches):
-        batches_train, _ = batches
+        batches_train, *_ = batches
         total = len(batches_train)
         opt = self.optimizers()
         total_loss = 0

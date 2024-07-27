@@ -22,15 +22,14 @@ def plot_task(dataset, idx, data_category, fdir_to_save=None):
         else:
             ax.set_title(train_or_test + ' ' + input_or_output, fontweight='bold')
 
-    task_key = dataset.task_key(idx)  # Get the task ID
-    train_inputs, train_outputs, test_inputs, test_outputs = dataset[idx]  # Load the first task
+    train_inputs, train_outputs, test_inputs, test_outputs, task_id = dataset[idx]  # Load the first task
     
     num_train = len(train_inputs)
     num_test = len(test_inputs)
     num_total = num_train + num_test
     
     fig, axs = plt.subplots(2, num_total, figsize=(3*num_total, 3*2))
-    plt.suptitle(f'{data_category.capitalize()} Set #{idx+1}, {task_key}:', fontsize=20, fontweight='bold', y=0.96)
+    plt.suptitle(f'{data_category.capitalize()} Set #{idx+1}, {task_id}:', fontsize=20, fontweight='bold', y=0.96)
     
     cmap = colors.ListedColormap(COLORS)
     norm = colors.Normalize(vmin=0, vmax=9)
@@ -54,7 +53,7 @@ def plot_task(dataset, idx, data_category, fdir_to_save=None):
     fig.subplots_adjust(top=0.85)
     
     if fdir_to_save is not None:
-        fname = os.path.join(fdir_to_save, '{}_{}.png'.format(idx+1, task_key))
+        fname = os.path.join(fdir_to_save, '{}_{}.png'.format(idx+1, task_id))
         plt.savefig(fname)
         plt.close()
         print('{} saved'.format(fname))

@@ -65,7 +65,7 @@ class ARCDataset(Dataset):
         if self.ignore_color:
             ts_train = [one_hot_encode_changes(task_item_in, task_item_out)[0] if self.one_hot else task_item_out for task_item_in, task_item_out in zip(challenge['train']['input'], challenge['train']['output'])]
         else:
-            ts_train = [one_hot_encode(task_item_out, cold_value=0) if self.one_hot else task_item_out for task_item_out in challenge['train']['output']]
+            ts_train = [one_hot_encode(task_item_out) if self.one_hot else task_item_out for task_item_out in challenge['train']['output']]
 
         xs_test = [one_hot_encode(task_item, cold_value=self.cold_value) if self.one_hot else task_item for task_item in challenge['test']['input']]
 
@@ -74,11 +74,11 @@ class ARCDataset(Dataset):
         elif self.ignore_color:
             ts_test = [one_hot_encode_changes(task_item_in, task_item_out)[0] if self.one_hot else task_item_out for task_item_in, task_item_out in zip(challenge['test']['input'], solution)]
         else:
-            ts_test = [one_hot_encode(task_item_out, cold_value=0) if self.one_hot else task_item_out for task_item_out in solution]
+            ts_test = [one_hot_encode(task_item_out) if self.one_hot else task_item_out for task_item_out in solution]
 
-        return xs_train, ts_train, xs_test, ts_test
+        return xs_train, ts_train, xs_test, ts_test, task_id
 
-    def task_key(self, idx):
+    def task_id(self, idx):
         return list(self.challenges.keys())[idx]
 
     def augment_data(self):
@@ -171,8 +171,8 @@ class ARCDataLoader(DataLoader):
         
     def __iter__(self):
         for batch in super().__iter__():
-            xs_train, ts_train, xs_test, ts_test = batch
-            yield list(zip(xs_train, ts_train)), list(zip(xs_test, ts_test))
+            xs_train, ts_train, xs_test, ts_test, task_id = batch
+            yield list(zip(xs_train, ts_train)), list(zip(xs_test, ts_test)), task_id
 
     def __len__(self):
         return super().__len__()
@@ -238,30 +238,32 @@ if __name__ == '__main__':
     
     from arc_prize.constants import get_challenges_solutions_filepath
 
-    # data_category = 'train'
-    # fdir_to_save = None
-    # # fdir_to_save = f'output/task_visualization/{data_category}/'
+    data_category = 'train'
+    fdir_to_save = None
+    # fdir_to_save = f'output/task_visualization/{data_category}/'
 
-    # # Example usage
-    # challenges, solutions = get_challenges_solutions_filepath(data_category)
-    # dataset = ARCDataset(challenges, solutions, one_hot=False, filter_funcs=())
-    # print(f'Data size: {len(dataset)}')
+    # Example usage
+    challenges, solutions = get_challenges_solutions_filepath(data_category)
+    dataset = ARCDataset(challenges, solutions, one_hot=False, filter_funcs=())
+    print(f'Data size: {len(dataset)}')
 
-    # # save figure images
-    # if fdir_to_save is not None:
-    #     fdir_to_save = os.path.join(os.getcwd(), fdir_to_save)
-    #     os.makedirs(fdir_to_save, exist_ok=True)
+    # save figure images
+    if fdir_to_save is not None:
+        fdir_to_save = os.path.join(os.getcwd(), fdir_to_save)
+        os.makedirs(fdir_to_save, exist_ok=True)
 
-    # # Visualize a task
-    # for index in range(len(dataset)):
-    #     plot_task(dataset, index, data_category, fdir_to_save=fdir_to_save)
+    # Visualize a task
+    for index in range(len(dataset)):
+        plot_task(dataset, index, data_category, fdir_to_save=fdir_to_save)
 
 
-    # Show Each Size of Batch
-    datamodule = ARCDataModule(batch_size_max=1, augment_data=True)
+    # # Show Each Size of Batch
+    # datamodule = ARCDataModule(batch_size_max=8, augment_data=False)
 
-    for task in datamodule.train_dataloader():
-        print('{} Data -> {} Batches'.format(sum([len(xs) for xs, *_ in task[0]]), len(task[0])))
-        for xs_train, ts_train in task[0]:
-            print(xs_train.shape)
-        break
+    # for task in datamodule.train_dataloader():
+    #     print('{} Data -> {} Batches'.format(sum([len(xs) for xs, *_ in task[0]]), len(task[0])))
+    #     for xs_train, ts_train in task[0]:
+    #         print(xs_train.shape)
+    #     break
+    
+    #     # print(task[2], len(task[1]))
