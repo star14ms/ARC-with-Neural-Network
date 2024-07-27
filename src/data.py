@@ -196,7 +196,7 @@ class ARCDataModule(LightningDataModule):
         self.ignore_color = ignore_color
 
         self.num_workers = num_workers if num_workers else suggested_max_num_workers(local_world_size=local_world_size or 1)
-        self.kwargs_dataloader = {} if not debug else {'num_workers': self.num_workers, 'persistent_workers': True}
+        self.kwargs_dataloader = {} if debug else {'num_workers': self.num_workers, 'persistent_workers': True}
         self.prepare_data()
 
     def prepare_data(self):

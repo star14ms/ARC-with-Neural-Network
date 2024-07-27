@@ -20,7 +20,6 @@ def get_model_class(model_name: str):
 @dataclass
 class DataConfig:
     name: str = 'default'
-    batch_size_max: int = 1
     cold_value: int = -1
     augment_data: bool = False
     ignore_color: bool = False
@@ -28,7 +27,9 @@ class DataConfig:
 @dataclass
 class TrainConfig:
     name: str = 'default'
-    epoch: int = 1
+    max_epochs: int = 1
+    batch_size_max: int = 8
+    lr: float = 0.01
     save_dir: str = "./output/"
     ckpt_path: str | None = None
 

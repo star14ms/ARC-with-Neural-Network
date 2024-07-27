@@ -1,7 +1,8 @@
 name: "default"
 
 params:
-  epoch: 60
+  max_epochs: 60
+  batch_size_max: 8
   lr: 0.01
   save_dir: "./output/"
   ckpt_path: null

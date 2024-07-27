@@ -2,7 +2,6 @@
 import torch
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_lightning.callbacks import ModelCheckpoint
 import os
 
 import warnings
@@ -30,13 +29,17 @@ def train(config: DictConfig, model=None, test=False, return_model=False):
     hparams_data = OmegaConf.to_container(config.data.params, resolve=True)
     hparams_model = OmegaConf.to_container(config.model.params, resolve=True)
     hparams_train = OmegaConf.to_container(config.train.params, resolve=True)
-    max_epochs = hparams_train.pop("epoch", None)
-    save_dir = hparams_train.pop("save_dir", None)
-    ckpt_path = hparams_train.pop("ckpt_path", None)
+    max_epochs, batch_size_max, lr, save_dir, ckpt_path = \
+        hparams_train.get('max_epochs', None), \
+        hparams_train.get('batch_size_max', None), \
+        hparams_train.get('lr', None), \
+        hparams_train.get('save_dir', None), \
+        hparams_train.get('ckpt_path', None)
 
     if model is None or isinstance(model, type):
+        model = model if isinstance(model, type) else None
         model_class = get_model_class(config.model.name if model is None else model.__name__)
-        model = model_class(**hparams_model, **hparams_train, model=model if isinstance(model, type) else None)
+        model = model_class(lr=lr, model=model, **hparams_model)
         print(OmegaConf.to_yaml(config))
         print(model)
 
@@ -60,7 +63,7 @@ def train(config: DictConfig, model=None, test=False, return_model=False):
             # ModelCheckpoint(every_n_epochs=50, save_top_k=3, monitor='epoch', mode='max')
         ]
     )
-    datamodule = ARCDataModule(local_world_size=trainer.num_devices, **hparams_data)
+    datamodule = ARCDataModule(local_world_size=trainer.num_devices, batch_size_max=batch_size_max, **hparams_data)
 
     # Train the model
     trainer.fit(model, datamodule=datamodule, ckpt_path=ckpt_path)
@@ -74,7 +77,6 @@ def train(config: DictConfig, model=None, test=False, return_model=False):
     
     if test:
         with open_dict(config):
-            config.test.params.model_path = save_path
             config.data.params.augment_data = False
 
         test_fn(config, model)
@@ -94,7 +96,7 @@ cs.store(group="model", name="base_FillerKeepInputIgnoreColor", node=FillerKeepI
 @hydra.main(config_path=os.path.join('..', "configs"), config_name="train", version_base=None)
 def main(config: DictConfig) -> None:
     # warnings.filterwarnings('ignore')
-    train(config, test=False, return_model=True)
+    train(config, test=False)
 
 
 if __name__ == '__main__':

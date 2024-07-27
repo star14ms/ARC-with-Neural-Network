@@ -80,7 +80,7 @@ class FillerKeepInputL(LightningModuleBase):
 
             with torch.no_grad():
                 # y_prob = F.softmax(y.detach().cpu(), dim=1)
-                y_origin = torch.argmax(y, dim=1).long() # [H, W]
+                y_origin = torch.argmax(y.detach().cpu(), dim=1).long() # [H, W]
                 t_origin = torch.argmax(t.detach().cpu(), dim=1).long()
                 n_pixel_wrong_total += (y_origin != t_origin).sum().int()
                 # visualize_image_using_emoji(x[0], y[0], t[0])
@@ -114,7 +114,7 @@ class FillerKeepInputIgnoreColorL(LightningModuleBase):
 
     def forward(self, inputs, *args, **kwargs):
         # In Lightning, forward defines the prediction/inference actions
-        return self.model(inputs)
+        return self.model(inputs, *args, **kwargs)
 
     def training_step(self, batches):
         batches_train, *_ = batches

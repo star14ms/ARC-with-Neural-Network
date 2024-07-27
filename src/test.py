@@ -6,8 +6,8 @@ import warnings
 import hydra
 from hydra.core.config_store import ConfigStore
 from omegaconf import OmegaConf, DictConfig
-from rich.traceback import install
 from rich import print
+from rich.traceback import install
 install()
 
 from arc_prize.model import (
@@ -24,8 +24,7 @@ from data import ARCDataset
 
 def _test(config, model, dataset_train, device):
     n_recurrance_feature_extraction = config.test.params.get('n_recurrance_feature_extraction', None)
-    
-    kwargs = dict(n_recurrance_feature_extraction=n_recurrance_feature_extraction)
+    kwargs = dict(n_recurrance_feature_extraction=n_recurrance_feature_extraction) if n_recurrance_feature_extraction else {}
 
     for i, (inputs, outputs, inputs_test, outputs_test, key) in enumerate(dataset_train):
         task_result = []
@@ -49,9 +48,9 @@ def _test(config, model, dataset_train, device):
                 t0[4:5] += t
                 t_origin = reconstruct_t_from_one_hot(x_origin, t0)
 
-                xy_construct = x_origin.squeeze(0).repeat(1, 1)
-                xy_construct[torch.where(y_origin == 1)] = 4
-                y_origin = xy_construct
+                # xy_construct = x_origin.squeeze(0).repeat(1, 1)
+                # xy_construct[torch.where(y_origin == 1)] = 4
+                # y_origin = xy_construct
             else:
                 # y_prob = F.softmax(y, dim=1)
                 y_origin = torch.argmax(y, dim=1).long() # [H, W]
@@ -85,7 +84,6 @@ def test(config, model=None):
     hparmas_test = OmegaConf.to_container(config.test.params, resolve=True)
     base_path = hparams_data.pop('base_path')
     model_path = hparmas_test.pop('model_path')
-    del hparams_data['batch_size_max']
 
     if model is None or isinstance(model, type):
         model_class = get_model_class(config.model.name if model is None else model.__name__)

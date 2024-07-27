@@ -2,7 +2,6 @@ name: "FillerKeepInputIgnoreColor"
 
 params:
   base_path: "./data/arc-prize-2024/"
-  batch_size_max: 8
   cold_value: -1
   augment_data: False
   ignore_color: True
