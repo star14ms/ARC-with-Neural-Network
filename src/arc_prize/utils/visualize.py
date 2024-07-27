@@ -81,6 +81,17 @@ def plot_xyt(input_tensor, predicted_tensor, answer_tensor=None, idx=0):
     cmap = colors.ListedColormap(COLORS)
     norm = colors.Normalize(vmin=0, vmax=9)
     
+    input_tensor = input_tensor.detach().cpu().squeeze(0)
+    predicted_tensor = predicted_tensor.detach().cpu().squeeze(0)
+    answer_tensor = answer_tensor.detach().cpu().squeeze(0) if answer_tensor is not None else None
+    
+    if len(input_tensor.shape) == 3:
+        input_tensor = torch.argmax(input_tensor, dim=0).long()
+    if len(predicted_tensor.shape) == 3:
+        predicted_tensor = torch.argmax(predicted_tensor, dim=0).long()
+    if answer_tensor is not None and len(answer_tensor.shape) == 3:
+        answer_tensor = torch.argmax(answer_tensor, dim=0).long()
+
     plot_single_image(input_tensor, axs[0], 'Input', cmap, norm)
     plot_single_image(predicted_tensor, axs[1], 'Predicted', cmap, norm)
     if answer_tensor is not None:
@@ -99,6 +110,18 @@ def plot_xyts(task_result, title_prefix="Task"):
     num_pairs = len(task_result)
     num_columns = 3
     fig, axs = plt.subplots(num_columns, num_pairs, figsize=(num_columns*6, 10))
+    
+    task_result = [(
+        x.detach().cpu().squeeze(0).long(),
+        y.detach().cpu().squeeze(0).long(),
+        t.detach().cpu().squeeze(0).long(),
+    ) for x, y, t in task_result]
+
+    task_result = [(
+        torch.argmax(x, dim=0).long() if len(x.shape) > 2 else x, 
+        torch.argmax(y, dim=0).long() if len(y.shape) > 2 else y,
+        torch.argmax(t, dim=0).long() if len(t.shape) > 2 else t,
+    ) for x, y, t in task_result]
 
     # If there's only one task, axs may not be a 2D array
     if num_pairs == 1:

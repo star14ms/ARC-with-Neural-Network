@@ -17,26 +17,24 @@ class ConvSameColorFeatureExtractor(nn.Module):
         )
 
         self.attn_conv = nn.TransformerDecoder(
-            nn.TransformerDecoderLayer(d_model=self.V, nhead=1, dim_feedforward=32, batch_first=True, bias=False),
+            nn.TransformerDecoderLayer(d_model=self.V, nhead=1, dim_feedforward=1, batch_first=True, bias=True),
             num_layers=1,
         )
         self.decoder_secondary_feature = nn.Sequential(
-            nn.Linear(self.V, 1, bias=True),
+            nn.Linear(self.V, 1, bias=False),
         )
-        self.decoder_final = nn.Sequential(
-            nn.Linear(d_feature, 1, bias=True),
-        )
-        self.feature_map = nn.Parameter(torch.randn(d_feature, self.V))
+        self.feature_map = nn.Parameter(torch.randn(d_conv_feature, self.V))
 
     def forward(self, x, n_recurrance_feature_extraction=None):
         N, C, H, W = x.shape
+        V2 = self.d_conv_feature
         x = x.transpose(1, 0) # [C, N, H, W]
         n_recurrance_feature_extraction = n_recurrance_feature_extraction or max(H, W)
 
         x_list = []
         for i, x_c in enumerate(x):
             if not torch.any(x_c == 1):
-                x_c = (x_c.view(1, N, 1, H, W) + 1).repeat(1, 1, 1, 1, 1) # .fill_(1) # default value is 0
+                x_c = (x_c.view(1, N, 1, H, W) + 1).repeat(1, 1, V2, 1, 1) # .fill_(1) # default value is 0
                 x_list.append(x_c)
                 continue
 
@@ -46,7 +44,6 @@ class ConvSameColorFeatureExtractor(nn.Module):
 
             feature = x_c.permute(0, 2, 3, 1).reshape(N*H*W, self.V)
             feature = self.decoder_initial(feature).view(N*H*W, -1, 1).repeat(1, 1, V) # [N*H*W, V2, V]
-            V2 = feature.shape[1]
 
             for _ in range(n_recurrance_feature_extraction): ### Varialble (Depends on Input Shape)
                 x_c = self.extender(x_c) # [N, V, H, W]
@@ -55,8 +52,7 @@ class ConvSameColorFeatureExtractor(nn.Module):
             feature = feature.view(N, H, W, V2, V).view(N*H*W*V2, V)
 
             x_c = self.decoder_secondary_feature(feature) # [N*H*W*V2, 1]
-            x_c = self.decoder_final(x_c.view(N*H*W, V2)) # [N*H*W, 1]
-            x_c = x_c.view(N, H, W, 1).permute(0, 3, 1, 2)
+            x_c = x_c.view(N, H, W, -1).permute(0, 3, 1, 2)
             x_list.append(x_c.unsqueeze(0)) # [1, N, V, H, W]
 
         x = torch.cat(x_list) # [C, N, V, H, W]
@@ -83,7 +79,6 @@ class FillerKeepInput(nn.Module):
         )
         self.decoder = nn.Sequential(
             nn.Linear(d_color_feature, 1, bias=False),
-            nn.BatchNorm1d(1),
         )
         self.color_vector = nn.Parameter(torch.randn(num_classes, d_color_feature)) # Task_specific color vector
 
@@ -94,7 +89,7 @@ class FillerKeepInput(nn.Module):
         feature = feature.permute(1, 3, 4, 0, 2).reshape(N*H*W, C, -1) # [N*H*W, C, V]
 
         y = self.color_vector.repeat(N*H*W, 1, 1)
-        feature = feature.transpose(2, 1).repeat(1, V, 1) # [N*H*W, V, C]
+        feature = feature.transpose(2, 1) # [N*H*W, V, C]
 
         y = y.transpose(2, 1) # [N*H*W, V, C]
         y = self.attn_feature(y, feature)

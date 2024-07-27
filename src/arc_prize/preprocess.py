@@ -59,6 +59,9 @@ def reconstruct_t_from_one_hot(x, target_one_hot):
     if not isinstance(target_one_hot, torch.Tensor):
         target_one_hot = torch.tensor(target_one_hot)
 
+    x = x.squeeze(0)
+    target_one_hot = target_one_hot.squeeze(0)
+
     # Initialize t as a copy of x
     t_reconstructed = x.clone()
 

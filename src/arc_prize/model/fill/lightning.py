@@ -52,7 +52,7 @@ class FillerKeepInputL(LightningModuleBase):
 
         model = model if model is not None else FillerKeepInput
         self.model = model(*args, **kwargs)
-        self.loss_fn_source = nn.BCEWithLogitsLoss()
+        self.loss_fn_source = nn.CrossEntropyLoss()
 
         device = 'mps' if torch.backends.mps.is_available() else 'cpu'
         self.model.to(device)
@@ -77,9 +77,8 @@ class FillerKeepInputL(LightningModuleBase):
             total_loss += loss
 
             with torch.no_grad():
-                # x_origin = torch.argmax(x.detach().cpu(), dim=1).long() # [H, W]
-                y_prob = F.sigmoid(y.detach().cpu())
-                y_origin = torch.argmax(y_prob, dim=1).long() # [H, W]
+                # y_prob = F.softmax(y.detach().cpu(), dim=1)
+                y_origin = torch.argmax(y, dim=1).long() # [H, W]
                 t_origin = torch.argmax(t.detach().cpu(), dim=1).long()
                 n_pixel_wrong_total += (y_origin != t_origin).sum().int()
                 # visualize_image_using_emoji(x[0], y[0], t[0])
