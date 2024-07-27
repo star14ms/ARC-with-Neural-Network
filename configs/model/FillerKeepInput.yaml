@@ -3,4 +3,6 @@ name: "FillerKeepInput"
 params:
   reduced_channels_encoder: [512, 32]
   reduced_channels_decoder: [32, 32]
-  
+  pad_value: -1
+  d_conv_feature: 16
+  d_color_feature: 32

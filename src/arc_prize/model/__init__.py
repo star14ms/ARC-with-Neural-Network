@@ -44,6 +44,9 @@ class ModelConfig:
 class FillerKeepInputConfig:
     reduced_channels_encoder: List[int] = (512, 32)
     reduced_channels_decoder: List[int] = (128, 32)
+    pad_value: int = -1
+    d_conv_feature: int = 16
+    d_color_feature: int = 32
 
 @dataclass
 class FillerKeepInputIgnoreColorConfig:

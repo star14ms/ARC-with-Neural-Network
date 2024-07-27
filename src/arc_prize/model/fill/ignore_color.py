@@ -6,7 +6,7 @@ from arc_prize.model.components.attention import ReductiveAttention
 
 
 class ConvFeatureExtractor(nn.Module):
-    def __init__(self, pad_value=-1, reduced_channels_encoder=[512, 128, 32], reduced_channels_decoder=[128, 32], recursion=3):
+    def __init__(self, reduced_channels_encoder=[512, 32], reduced_channels_decoder=[32, 32], pad_value=-1, recursion=5):
         super().__init__()
         self.recursion = recursion
         self.encoder = Conv2dEncoderLayer(1, reduced_channels_encoder, pad_value=pad_value, fixed_kernel=True)
@@ -50,9 +50,9 @@ class ConvFeatureExtractor(nn.Module):
 
 
 class FillerKeepInputIgnoreColor(nn.Module):
-    def __init__(self, pad_value=-1, reduced_channels_encoder=[512, 128, 32], reduced_channels_decoder=[128, 32]):
+    def __init__(self, reduced_channels_encoder=[512, 32], reduced_channels_decoder=[32, 32], pad_value=-1):
         super().__init__()
-        self.feature_extractor = ConvFeatureExtractor(pad_value, reduced_channels_encoder, reduced_channels_decoder)
+        self.feature_extractor = ConvFeatureExtractor(reduced_channels_encoder, reduced_channels_decoder, pad_value)
 
     def forward(self, x):
         N, C, H, W = x.shape

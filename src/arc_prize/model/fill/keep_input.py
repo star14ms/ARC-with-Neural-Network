@@ -2,17 +2,18 @@ import torch
 from torch import nn
 
 from arc_prize.model.components.convfixedkernel import Conv2dEncoderLayer
+from arc_prize.constants import COLORS
 
 
 class ConvSameColorFeatureExtractor(nn.Module):
-    def __init__(self, pad_value=-1, reduced_channels_encoder=[512, 32], reduced_channels_decoder=[512, 32], d_feature=32):
+    def __init__(self, reduced_channels_encoder=[512, 32], reduced_channels_decoder=[32, 32], d_conv_feature=16, pad_value=-1):
         super().__init__()
-        self.d_feature = d_feature
+        self.d_conv_feature = d_conv_feature
         self.V = reduced_channels_encoder[-1]
         self.encoder = Conv2dEncoderLayer(1, reduced_channels_encoder, pad_value=pad_value, fixed_kernel=True)
         self.extender = Conv2dEncoderLayer(reduced_channels_encoder[-1], reduced_channels_decoder, pad_value=1)
         self.decoder_initial = nn.Sequential(
-            nn.Linear(self.V, d_feature, bias=False),
+            nn.Linear(self.V, d_conv_feature, bias=False),
         )
 
         self.attn_conv = nn.TransformerDecoder(
@@ -67,9 +68,9 @@ class ConvSameColorFeatureExtractor(nn.Module):
 
 
 class FillerKeepInput(nn.Module):
-    def __init__(self, pad_value=-1, reduced_channels_encoder=[512, 32], reduced_channels_decoder=[128, 32], num_classes=10, d_feature=16, d_color_feature=32):
+    def __init__(self, reduced_channels_encoder=[512, 32], reduced_channels_decoder=[32, 32], d_conv_feature=16, pad_value=-1, d_color_feature=32, num_classes=len(COLORS)):
         super().__init__()
-        self.feature_extractor = ConvSameColorFeatureExtractor(pad_value, reduced_channels_encoder, reduced_channels_decoder, d_feature=d_feature)
+        self.feature_extractor = ConvSameColorFeatureExtractor(reduced_channels_encoder, reduced_channels_decoder, d_conv_feature, pad_value)
         self.d_color_feature = d_color_feature
     
         self.attn_input = nn.TransformerDecoder(
