@@ -58,10 +58,6 @@ class ConvSameColorFeatureExtractor(nn.Module):
         x = torch.cat(x_list) # [C, N, V, H, W]
         return x
         
-    def to(self, *args, **kwargs):
-        self.encoder = self.encoder.to(*args, **kwargs)
-        return super().to(*args, **kwargs)
-
 
 class FillerKeepInput(nn.Module):
     def __init__(self, reduced_channels_encoder=[512, 32], reduced_channels_decoder=[32, 32], d_conv_feature=16, pad_value=-1, d_color_feature=32, num_classes=len(COLORS)):
@@ -102,7 +98,3 @@ class FillerKeepInput(nn.Module):
         y = y.view(N, H, W, C).permute(0, 3, 1, 2) # [N, C, H, W]
 
         return y
-
-    def to(self, *args, **kwargs):
-        self.feature_extractor = self.feature_extractor.to(*args, **kwargs)
-        return super().to(*args, **kwargs)

@@ -1,5 +1,6 @@
 import torch
 import torch.nn.functional as F
+from pytorch_lightning.trainer.connectors.accelerator_connector import _AcceleratorConnector
 import os
 
 import warnings
@@ -96,7 +97,7 @@ def test(config, model=None):
             state_dict = torch.load(model_path)['state_dict']
         model.load_state_dict(state_dict)
 
-    device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+    device = torch.device(_AcceleratorConnector._choose_auto_accelerator())
     model.eval()
     model.to(device)
 

@@ -36,23 +36,13 @@ class Conv2dFixedKernel(nn.Conv2d):
         # Remove the default weight parameter
         del self._parameters['weight']
         del self._parameters['bias']
-        
-        if update:
-            # Register weight as a parameter for updates
-            param = nn.Parameter(weight)
-            self.register_parameter('weight', param)
-            
-            self.bias = nn.Parameter(biases, requires_grad=update)
-            self.register_parameter('bias', self.bias)
-        else:
-            # Set fixed weight
-            self.weight = weight
-            self.bias = biases
 
-    def to(self, *args, **kwargs):
-        self.weight = self.weight.to(*args, **kwargs)
-        self.bias = self.bias.to(*args, **kwargs)
-        return super().to(*args, **kwargs)
+        # Register weight as a parameter for updates
+        param = nn.Parameter(weight, requires_grad=update)
+        self.register_parameter('weight', param)
+        
+        self.bias = nn.Parameter(biases, requires_grad=update)
+        self.register_parameter('bias', self.bias)
 
     @staticmethod
     def generate_all_possible_NxM_kernels(kernel_size=(3, 3), device=None, dtype=None):
@@ -111,11 +101,6 @@ class Conv2dEncoderLayer(nn.Module):
         x = self.norm(x)
 
         return x
-
-    def to(self, *args, **kwargs):
-        self.conv = self.conv.to(*args, **kwargs)
-        return super().to(*args, **kwargs)
-    
 
 
 def test_backward(model, x):

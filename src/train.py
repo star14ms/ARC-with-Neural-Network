@@ -57,7 +57,6 @@ def train(config: DictConfig, model=None, test=False, return_model=False):
         max_epochs=max_epochs, 
         logger=logger, 
         log_every_n_steps=1, 
-        accelerator='mps' if torch.backends.mps.is_available() else 'cpu',
         callbacks=[
             RichProgressBarCustom(),
             # ModelCheckpoint(every_n_epochs=50, save_top_k=3, monitor='epoch', mode='max')

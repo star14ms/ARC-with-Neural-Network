@@ -44,10 +44,6 @@ class ConvFeatureExtractor(nn.Module):
 
         return x.transpose(1, 0) # [N, C, H, W]
         
-    def to(self, *args, **kwargs):
-        self.encoder = self.encoder.to(*args, **kwargs)
-        return super().to(*args, **kwargs)
-
 
 class FillerKeepInputIgnoreColor(nn.Module):
     def __init__(self, reduced_channels_encoder=[512, 32], reduced_channels_decoder=[32, 32], pad_value=-1):
@@ -61,7 +57,3 @@ class FillerKeepInputIgnoreColor(nn.Module):
         y = x[:, 1:].sum(dim=1).view(N, H, W)
 
         return y
-
-    def to(self, *args, **kwargs):
-        self.feature_extractor = self.feature_extractor.to(*args, **kwargs)
-        return super().to(*args, **kwargs)

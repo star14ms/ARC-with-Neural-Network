@@ -56,9 +56,6 @@ class FillerKeepInputL(LightningModuleBase):
         model = model if model is not None else FillerKeepInput
         self.model = model(*args, **kwargs)
         self.loss_fn_source = nn.CrossEntropyLoss()
-
-        device = 'mps' if torch.backends.mps.is_available() else 'cpu'
-        self.model.to(device)
     
     def forward(self, inputs, *args, **kwargs):
         # In Lightning, forward defines the prediction/inference actions
@@ -96,7 +93,7 @@ class FillerKeepInputL(LightningModuleBase):
             opt.step()
 
         print("Epoch {} | Train loss: {:.6f} | N Pixels Wrong: {}".format(self.current_epoch+1, total_loss, n_pixel_wrong_total))
-        self.log('N Pixels Wrong', n_pixel_wrong_total.to(torch.float32))
+        self.log('N Pixels Wrong', n_pixel_wrong_total.float())
         self.log('Train loss', total_loss, prog_bar=True)
         return {'loss': loss, 'n_pixel_wrong_total': n_pixel_wrong_total}
 
@@ -108,9 +105,6 @@ class FillerKeepInputIgnoreColorL(LightningModuleBase):
         model = model if model is not None else FillerKeepInputIgnoreColor
         self.model = model(*args, **kwargs)
         self.loss_fn_source = nn.BCEWithLogitsLoss()
-        
-        device = 'mps' if torch.backends.mps.is_available() else 'cpu'
-        self.model.to(device)
 
     def forward(self, inputs, *args, **kwargs):
         # In Lightning, forward defines the prediction/inference actions
@@ -148,5 +142,5 @@ class FillerKeepInputIgnoreColorL(LightningModuleBase):
 
         print("Epoch {} | Train loss: {:.6f} | N Pixels Wrong: {}".format(self.current_epoch+1, total_loss, n_pixel_wrong_total))
         self.log('Train loss', total_loss, prog_bar=True)
-        self.log('N Pixels Wrong', n_pixel_wrong_total.to(torch.float32))
+        self.log('N Pixels Wrong', n_pixel_wrong_total.float())
         return {'loss': loss, 'n_pixel_wrong_total': n_pixel_wrong_total}

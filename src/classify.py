@@ -52,8 +52,8 @@ class ARCDataClassifier:
     # Check if the number of background colors is the same in the input and output
     def is_same_number_of_background_colors(xs, ys, *args, **kwargs):
         for x, y in zip(xs, ys):
-            bincount_input = x.flatten().to(int).bincount(minlength=len(COLORS)).tolist()
-            bincount_output = y.flatten().to(int).bincount(minlength=len(COLORS)).tolist()
+            bincount_input = x.flatten().int().bincount(minlength=len(COLORS)).tolist()
+            bincount_output = y.flatten().int().bincount(minlength=len(COLORS)).tolist()
 
             n_pixels_background_color_input = max(bincount_input)
             n_pixels_background_color_output = max(bincount_output)
