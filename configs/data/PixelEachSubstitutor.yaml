@@ -1,0 +1,6 @@
+name: "PixelEachSubstitutor"
+
+params:
+  base_path: "./data/arc-prize-2024/"
+  cold_value: 0
+  ignore_color: False

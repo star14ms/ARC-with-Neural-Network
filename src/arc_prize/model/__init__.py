@@ -7,10 +7,14 @@ def get_model_class(model_name: str):
         FillerKeepInputL,
         FillerKeepInputIgnoreColorL,
     )
+    from arc_prize.model.substitute.lightning import (
+        PixelEachSubstitutorL,
+    )
 
     model_classes = [
         FillerKeepInputL,
         FillerKeepInputIgnoreColorL,
+        PixelEachSubstitutorL,
     ]
 
     for model_class in model_classes:
@@ -59,3 +63,7 @@ class FillerKeepInputConfig:
 class FillerKeepInputIgnoreColorConfig:
     reduced_channels_encoder: List[int] = (512, 32)
     reduced_channels_decoder: List[int] = (128, 32)
+
+@dataclass
+class PixelEachSubstitutorConfig:
+    pass

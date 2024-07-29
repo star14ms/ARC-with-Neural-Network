@@ -182,10 +182,29 @@ class ARCDataClassifier:
         return partial(ARCDataClassifier.is_n_color_stable, n=n, *args, **kwargs)
 
 
+    def is_shape_size_in(xs, ys, *args, **kwargs):
+        start, stop = kwargs['start'], kwargs['stop']
+        range_size = range(start, stop)
+
+        for x, y in zip(xs, ys):
+            if not (x.shape[0] in range_size and 
+                    x.shape[1] in range_size and 
+                    y.shape[0] in range_size and 
+                    y.shape[1] in range_size
+                ):
+                return False if kwargs['bool'] else True
+        return True if kwargs['bool'] else False
+    
+    def is_shape_size_in_f(start, stop, bool=True, *args, **kwargs):
+        return partial(ARCDataClassifier.is_shape_size_in, start=start, stop=stop, bool=bool, *args, **kwargs)
+
+
 def get_filter_funcs():
     filter_funcs = (
-        ARCDataClassifier.in_data_codes_f(['00d62c1b']),
+        ARCDataClassifier.in_data_codes_f(['3aa6fb7a', '4258a5f9']),
+        # ARCDataClassifier.in_data_codes_f(['00d62c1b']),
         # ARCDataClassifier.is_same_shape_f(True),
+        # ARCDataClassifier.is_shape_size_in_f(start=1, stop=21),
         # ARCDataClassifier.is_n_color_stable_f(1),
         # ARCDataClassifier.is_same_colors_f(False),
         # ARCDataClassifier.is_dominent_color_stable_f(True)
@@ -207,11 +226,14 @@ if __name__ == '__main__':
     # Example usage
     # filter_funcs = get_filter_funcs()
     filter_funcs = (
-        # ARCDataClassifier.in_data_codes_f(['00d62c1b']),
-        ARCDataClassifier.is_same_shape_f(True),
-        ARCDataClassifier.is_n_color_stable_f(1),
-        ARCDataClassifier.is_same_colors_f(False),
-        ARCDataClassifier.is_dominent_color_stable_f(True)
+        ARCDataClassifier.in_data_codes_f(['3aa6fb7a', '4258a5f9']),
+        # ARCDataClassifier.in_data_codes_f(['239be575', '25ff71a9', '27a28665', 'ff28f65a']),
+        # ARCDataClassifier.in_data_codes_f(['3c9b0459', '5582e5ca', '74dd1130', 'caa06a1f', 'e8dc4411', 'e9afcf9a']), # 100% pixels incorrect
+        # ARCDataClassifier.is_same_shape_f(True),
+        # ARCDataClassifier.is_shape_size_in_f(start=1, stop=21, bool=False),
+        # ARCDataClassifier.is_n_color_stable_f(1),
+        # ARCDataClassifier.is_same_colors_f(False),
+        # ARCDataClassifier.is_dominent_color_stable_f(True)
     )
 
     dataset = ARCDataset(challenges, solutions, one_hot=False, filter_funcs=filter_funcs)

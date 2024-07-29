@@ -18,7 +18,8 @@ from arc_prize.model import (
     TrainConfig,
     TestConfig,
     FillerKeepInputConfig,
-    FillerKeepInputIgnoreColorConfig
+    FillerKeepInputIgnoreColorConfig,
+    PixelEachSubstitutorConfig,
 )
 from arc_prize.utils.lightning_custom import RichProgressBarCustom
 from data import ARCDataModule
@@ -70,12 +71,12 @@ def train(config: DictConfig, model=None, test=False, return_model=False):
 
     # Train the model
     trainer.fit(model, datamodule=datamodule, ckpt_path=ckpt_path)
+    print('Seed used', torch.seed())
 
     # Save the model to disk (optional)
     os.makedirs(save_dir, exist_ok=True)
     save_path = os.path.join(save_dir, '{}.ckpt'.format(model.model.__class__.__name__))
     trainer.save_checkpoint(save_path)
-    print('Seed used', torch.seed())
     print('Model saved to:', save_path)
     
     if test:
@@ -91,6 +92,7 @@ cs.store(group="train", name="base_train", node=TrainConfig, package="train")
 cs.store(group="test", name="base_test", node=TestConfig, package="test")
 cs.store(group="model", name="base_FillerKeepInput", node=FillerKeepInputConfig, package="model")
 cs.store(group="model", name="base_FillerKeepInputIgnoreColor", node=FillerKeepInputIgnoreColorConfig, package="model")
+cs.store(group="model", name="base_PixelEachSubstitutor", node=PixelEachSubstitutorConfig, package="model")
 
 
 @hydra.main(config_path=os.path.join('..', "configs"), config_name="train", version_base=None)

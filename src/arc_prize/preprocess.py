@@ -14,7 +14,7 @@ def one_hot_encode(matrix, num_classes=len(COLORS), cold_value=0, last_dim_ones=
     if cold_value == 0:
         one_hot_matrix = torch.zeros(num_classes, H, W)
     else:
-        one_hot_matrix = torch.full([num_classes, H, W], cold_value, dtype=torch.float)
+        one_hot_matrix = torch.full([num_classes, H, W], cold_value, dtype=torch.float32)
     
     # Use scatter_ to fill in the one-hot encoded tensor
     one_hot_matrix.scatter_(0, matrix.unsqueeze(0), 1)

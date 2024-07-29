@@ -1,0 +1,6 @@
+name: "PixelEachSubstitutor"
+
+params:
+  model_path: "./output/PixelEachSubstitutor.pth"
+  augment_data: False
+  verbose_single: False

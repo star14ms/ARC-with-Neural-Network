@@ -1,5 +1,5 @@
 defaults:
-  - data: FillerKeepInput
-  - model: FillerKeepInput
-  - train: FillerKeepInput
-  - test: FillerKeepInput
+  - data: PixelEachSubstitutor
+  - model: PixelEachSubstitutor
+  - train: PixelEachSubstitutor
+  - test: PixelEachSubstitutor

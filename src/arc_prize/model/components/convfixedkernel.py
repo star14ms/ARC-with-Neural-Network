@@ -14,18 +14,24 @@ class Conv2dFixedKernel(nn.Conv2d):
         padding: Union[str, _size_2_t] = 0,
         dilation: _size_2_t = 1,
         groups: int = 1,
-        bias: bool = False,
+        bias=False,
         padding_mode: str = 'zeros',
         device=None,
         dtype=None,
         weight=None, 
-        update=False
+        requires_grad=False,
+        generate_all_possible_binary_kernels=False,
     ):
-        if weight is None:
+        if generate_all_possible_binary_kernels:
             weight, out_channels, biases = self.generate_all_possible_NxM_kernels(kernel_size, device=device, dtype=dtype)
         else:
-            out_channels = weight.shape[0]
-            biases = self.generate_biases(weight)
+            if weight is None:
+                raise ValueError('Weight must be provided if generate_all_possible_binary_kernels is False')
+            else:
+                out_channels = weight.shape[0]
+
+            if bias is not False:
+                biases = self.generate_biases(weight) if not isinstance(bias, torch.Tensor) else bias
 
         super().__init__(
             in_channels, out_channels, 
@@ -35,14 +41,13 @@ class Conv2dFixedKernel(nn.Conv2d):
 
         # Remove the default weight parameter
         del self._parameters['weight']
-        del self._parameters['bias']
+        self.weight = nn.Parameter(weight, requires_grad=requires_grad)
+        self.register_parameter('weight', self.weight)
 
-        # Register weight as a parameter for updates
-        param = nn.Parameter(weight, requires_grad=update)
-        self.register_parameter('weight', param)
-        
-        self.bias = nn.Parameter(biases, requires_grad=update)
-        self.register_parameter('bias', self.bias)
+        if bias is not False:
+            del self._parameters['bias']
+            self.bias = nn.Parameter(biases, requires_grad=requires_grad)
+            self.register_parameter('bias', self.bias)
 
     @staticmethod
     def generate_all_possible_NxM_kernels(kernel_size=(3, 3), device=None, dtype=None):
@@ -75,7 +80,7 @@ class Conv2dEncoderLayer(nn.Module):
         self.fixed_kernel = fixed_kernel
 
         if fixed_kernel:
-            self.conv = Conv2dFixedKernel(in_channels, kernel_size=kernel_size, stride=stride, padding=0)
+            self.conv = Conv2dFixedKernel(in_channels, kernel_size=kernel_size, stride=stride, padding=0, generate_all_possible_binary_kernels=True)
         else:
             self.conv = nn.Conv2d(in_channels, reduced_channels[0], kernel_size=kernel_size, stride=stride, padding=1, bias=False)
         self.activation = nn.ReLU()
@@ -121,7 +126,7 @@ if __name__ == '__main__':
     class SampleModel(nn.Module):
         def __init__(self, input_size):
             super().__init__()
-            self.conv = Conv2dFixedKernel(1, (3, 3), padding=1, update=False, bias=False)
+            self.conv = Conv2dFixedKernel(1, (3, 3), padding=1)
             self.linear = nn.Linear(512*input_size[0]*input_size[1], 1, bias=False)
 
         def forward(self, x):
