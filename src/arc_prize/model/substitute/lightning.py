@@ -12,9 +12,9 @@ class LightningModuleBase(pl.LightningModule):
     def __init__(self, lr=0.001, save_n_perfect_epoch=4, *args, **kwargs):
         super().__init__()
         self.lr = lr
-        self.n_pixels_wrong_in_epoch = 0
+        self.n_pixels_correct_in_epoch = 0
         self.n_pixels_total_in_epoch = 0
-        self.n_tasks_wrong_in_epoch = 0
+        self.n_tasks_correct_in_epoch = 0
         self.n_tasks_total_in_epoch = 0
         self.n_continuous_epoch_no_pixel_wrong = 0
         self.save_n_perfect_epoch = save_n_perfect_epoch
@@ -33,22 +33,30 @@ class LightningModuleBase(pl.LightningModule):
         return super().test_dataloader()
     
     def on_train_batch_end(self, out, batch, batch_idx):
-        self.n_pixels_wrong_in_epoch += out['n_pixels_wrong']
+        self.n_pixels_correct_in_epoch += out['n_pixels_correct']
         self.n_pixels_total_in_epoch += out['n_pixels_total']
-        self.n_tasks_wrong_in_epoch += out['n_tasks_wrong']
+        self.n_tasks_correct_in_epoch += out['n_tasks_correct']
         self.n_tasks_total_in_epoch += out['n_tasks_total']
         return out
 
     def on_train_epoch_end(self):
-        print('Epoch {} | {:>5.1f}% Tasks Correct ({:>3} Tasks Wrong) | {:>5.1f}% Pixels Correct ({} Pixels Wrong)'.format(
+        print('Epoch {} | Accuracy: {:>5.1f}% Tasks ({}/{}), {:>5.1f}% Pixels ({}/{})'.format(
             self.current_epoch+1, 
-            (self.n_tasks_total_in_epoch - self.n_tasks_wrong_in_epoch) / self.n_tasks_total_in_epoch * 100,
-            self.n_tasks_wrong_in_epoch,
-            (self.n_pixels_total_in_epoch - self.n_pixels_wrong_in_epoch) / self.n_pixels_total_in_epoch * 100, 
-            self.n_pixels_wrong_in_epoch
+            self.n_tasks_correct_in_epoch / self.n_tasks_total_in_epoch * 100,
+            self.n_tasks_correct_in_epoch,
+            self.n_tasks_total_in_epoch,
+            self.n_pixels_correct_in_epoch / self.n_pixels_total_in_epoch * 100, 
+            self.n_pixels_correct_in_epoch,
+            self.n_pixels_total_in_epoch
         ))
+        
+        current_epoch = self.trainer.current_epoch
+        max_epochs = self.trainer.max_epochs
 
-        if self.n_pixels_wrong_in_epoch == 0:
+        if current_epoch+1 == max_epochs:
+            self.progress.progress.stop()
+
+        if self.n_pixels_correct_in_epoch == 0:
             self.n_continuous_epoch_no_pixel_wrong += 1
         else:
             self.n_continuous_epoch_no_pixel_wrong = 0
@@ -59,9 +67,9 @@ class LightningModuleBase(pl.LightningModule):
             print(f"Model saved to: {save_path}")
 
         # free up the memory
-        self.n_pixels_wrong_in_epoch = 0
+        self.n_pixels_correct_in_epoch = 0
         self.n_pixels_total_in_epoch = 0
-        self.n_tasks_wrong_in_epoch = 0
+        self.n_tasks_correct_in_epoch = 0
         self.n_tasks_total_in_epoch = 0
 
 
@@ -84,14 +92,19 @@ class PixelEachSubstitutorL(LightningModuleBase):
         self.model.to(batches_train[0][0].device)
         opt = torch.optim.Adam(self.parameters(), lr=self.lr)
         
-        max_epochs = 50
+        max_epochs = 200
         total_loss_train = 0
         progress_id = self.progress._add_task(max_epochs, f'Epoch 1/{max_epochs}')
+        
+        print('Task ID:', task_id)
 
         # Find Pattern in Train Data
         for i in range(max_epochs):
             self.update_progress(progress_id, i, max_epochs, task_id, total_loss_train)
             total_loss_train = 0
+            n_pixels_total = 0
+            n_tasks_correct = 0
+            n_pixels_correct = 0
 
             for (x, t) in batches_train:
                 # forward + backward + optimize
@@ -103,14 +116,38 @@ class PixelEachSubstitutorL(LightningModuleBase):
                 opt.step()
                 
                 total_loss_train += loss.item()
+                
+                if i != max_epochs-1:
+                    continue
+
+                with torch.no_grad():
+                    y_prob = F.sigmoid(y.detach().cpu())
+                    y_origin = torch.argmax(y_prob, dim=1).long() # [H, W]
+                    t_origin = torch.argmax(t.detach().cpu(), dim=1).long()
+                    n_correct = (y_origin == t_origin).sum().int()
+                    n_pixels = t_origin.numel()
+
+                    n_pixels_total += n_pixels
+                    n_tasks_correct += n_correct == n_pixels
+                    n_pixels_correct += n_correct
+
+        print('Train Accuracy: {:>5.1f}% Tasks ({}/{}), {:>5.1f}% Pixels ({}/{}) | Train loss {:.4f}'.format(
+            n_tasks_correct / len(batches_train) * 100,
+            n_tasks_correct,
+            len(batches_train),
+            n_pixels_correct / n_pixels_total * 100, 
+            n_pixels_correct,
+            n_pixels_total,
+            total_loss_train
+        ))
 
         self.progress.progress.remove_task(progress_id)
         self.model.eval()
 
         total_loss = 0
-        n_pixels_wrong = 0
+        n_pixels_correct = 0
         n_pixels_total = 0
-        n_tasks_wrong = 0
+        n_tasks_correct = 0
 
         # Process Test Data
         for i, (x, t) in enumerate(batches_test):
@@ -122,23 +159,34 @@ class PixelEachSubstitutorL(LightningModuleBase):
                 y_prob = F.sigmoid(y.detach().cpu())
                 y_origin = torch.argmax(y_prob, dim=1).long() # [H, W]
                 t_origin = torch.argmax(t.detach().cpu(), dim=1).long()
-                n_pixels_correct = (y_origin == t_origin).sum().int()
+                n_correct = (y_origin == t_origin).sum().int()
                 n_pixels = t_origin.numel()
-                correct_ratio = n_pixels_correct / n_pixels * 100
 
                 n_pixels_total += n_pixels
-                n_tasks_wrong += 1 if n_pixels_correct != n_pixels else 0
-                n_pixels_wrong += n_pixels - n_pixels_correct
-                # visualize_image_using_emoji(x[0], t[0], y[0], torch.where(y_origin == t_origin, 3, 2))
+                n_tasks_correct += n_correct == n_pixels
+                n_pixels_correct += n_correct
 
-                self.log('N Pixels Wrong', n_pixels_wrong.float())
-                print("Task {} | Train loss: {:.6f} | {:>5.1f}% Correct ({} Pixels Wrong)".format(task_id, loss, correct_ratio, n_pixels - n_pixels_correct))
+                if n_correct != n_pixels:
+                    visualize_image_using_emoji(x[0], t[0], y[0], torch.where(y_origin == t_origin, 3, 2))
+                print("Test {} | Correct: {} | Accuracy: {:>5.1f}% ({}/{})".format(
+                    i+1, '🟩' if n_correct == n_pixels else '🟥', n_correct/n_pixels*100, n_correct, n_pixels, 
+                ))
+
+        print('Test Accuracy: {:>5.1f}% Tasks ({}/{}), {:>5.1f}% Pixels ({}/{}) | Test loss {:.4f}'.format(
+            n_tasks_correct / len(batches_test) * 100,
+            n_tasks_correct,
+            len(batches_test),
+            n_pixels_correct / n_pixels_total * 100,
+            n_pixels_correct,
+            n_pixels_total,
+            total_loss
+        ))
 
         return {
             'loss': total_loss, 
             'n_pixels_total': n_pixels_total, 
-            'n_pixels_wrong': n_pixels_wrong, 
-            'n_tasks_wrong': n_tasks_wrong, 
+            'n_pixels_correct': n_pixels_correct, 
+            'n_tasks_correct': n_tasks_correct, 
             'n_tasks_total': len(batches_test)
         }
 
@@ -148,6 +196,6 @@ class PixelEachSubstitutorL(LightningModuleBase):
     def update_progress(self, progress_id, i, max_epochs, task_id, total_loss_train):
         self.progress._update(progress_id, i+1, description=f'Epoch {i+1}/{max_epochs}')
         self.trainer.progress_bar_metrics['Task ID'] = task_id
-        self.trainer.progress_bar_metrics['Train Loss'] = total_loss_train
+        self.trainer.progress_bar_metrics['Train Loss'] = '{:.4f}'.format(total_loss_train)
         self.progress._update_metrics(self.trainer, self)
         self.progress.refresh()

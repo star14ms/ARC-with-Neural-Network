@@ -69,10 +69,8 @@ class RichProgressBarCustom(RichProgressBar):
         max_epochs = self._trainer.max_epochs
         new_description = 'Epoch {}/{}'.format(current_epoch+1, max_epochs)
         self.progress.update(self.train_progress_bar0_id, advance=1, description=new_description)
-
-        if current_epoch+1 == max_epochs:
-            self.progress.stop()
         self._update_metrics(trainer, pl_module)
+        self.refresh()
 
     def configure_columns(self, trainer: "pl.Trainer") -> list:
         return [
