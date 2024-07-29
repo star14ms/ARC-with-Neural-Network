@@ -83,10 +83,16 @@ class PixelEachSubstitutorL(LightningModuleBase):
         self.model = PixelEachSubstitutor()
         self.model.to(batches_train[0][0].device)
         opt = torch.optim.Adam(self.parameters(), lr=self.lr)
+        
+        max_epochs = 50
+        total_loss_train = 0
+        progress_id = self.progress._add_task(max_epochs, f'Epoch 1/{max_epochs}')
 
         # Find Pattern in Train Data
-        for i in range(50):
+        for i in range(max_epochs):
+            self.update_progress(progress_id, i, max_epochs, task_id, total_loss_train)
             total_loss_train = 0
+
             for (x, t) in batches_train:
                 # forward + backward + optimize
                 y = self.model(x)
@@ -96,11 +102,11 @@ class PixelEachSubstitutorL(LightningModuleBase):
                 loss.backward()
                 opt.step()
                 
-                total_loss_train += loss
+                total_loss_train += loss.item()
 
-            print('Task {} | Mini Epoch {} | Train loss {:6f}'.format(task_id, i+1, total_loss_train.item()))
-
+        self.progress.progress.remove_task(progress_id)
         self.model.eval()
+
         total_loss = 0
         n_pixels_wrong = 0
         n_pixels_total = 0
@@ -125,7 +131,7 @@ class PixelEachSubstitutorL(LightningModuleBase):
                 n_pixels_wrong += n_pixels - n_pixels_correct
                 # visualize_image_using_emoji(x[0], t[0], y[0], torch.where(y_origin == t_origin, 3, 2))
 
-                self.log('N Pixels Wrong', n_pixels_wrong.to(torch.float32))
+                self.log('N Pixels Wrong', n_pixels_wrong.float())
                 print("Task {} | Train loss: {:.6f} | {:>5.1f}% Correct ({} Pixels Wrong)".format(task_id, loss, correct_ratio, n_pixels - n_pixels_correct))
 
         return {
@@ -135,3 +141,13 @@ class PixelEachSubstitutorL(LightningModuleBase):
             'n_tasks_wrong': n_tasks_wrong, 
             'n_tasks_total': len(batches_test)
         }
+
+    def on_train_start(self):
+        self.progress = filter(lambda callback: hasattr(callback, 'progress'), self.trainer.callbacks).__next__()
+
+    def update_progress(self, progress_id, i, max_epochs, task_id, total_loss_train):
+        self.progress._update(progress_id, i+1, description=f'Epoch {i+1}/{max_epochs}')
+        self.trainer.progress_bar_metrics['Task ID'] = task_id
+        self.trainer.progress_bar_metrics['Train Loss'] = total_loss_train
+        self.progress._update_metrics(self.trainer, self)
+        self.progress.refresh()
