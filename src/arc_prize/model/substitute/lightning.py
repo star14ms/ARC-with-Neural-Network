@@ -93,7 +93,11 @@ class PixelEachSubstitutorL(LightningModuleBase):
         self.model.to(batches_train[0][0].device)
         opt = torch.optim.Adam(self.parameters(), lr=self.lr)
         
-        max_epochs = 100
+        self.training_step_train(batches_train, task_id, opt, max_epochs=200)
+        result = self.training_step_test(batches_test)
+        return result
+
+    def training_step_train(self, batches_train, task_id, opt, max_epochs=200):
         total_loss_train = 0
         progress_id = self.progress._add_task(max_epochs, f'Epoch 1/{max_epochs}')
         n_tasks_total = sum([len(b[0]) for b in batches_train])
@@ -116,20 +120,15 @@ class PixelEachSubstitutorL(LightningModuleBase):
                 opt.step()
                 
                 total_loss_train += loss.item()
-                
 
                 with torch.no_grad():
-                    y_prob = F.sigmoid(y.detach().cpu())
-                    y_origin = torch.argmax(y_prob, dim=1).long() # [H, W]
+                    y_origin = torch.argmax(y.detach().cpu(), dim=1).long() # [H, W]
                     t_origin = torch.argmax(t.detach().cpu(), dim=1).long()
-                    n_correct = (y_origin == t_origin).sum().int()
-                    n_pixels = t_origin.numel()
-
-                    n_pixels_total += n_pixels
                     n_tasks_correct += sum(torch.all(y_one == t_one).item() for y_one, t_one in zip(y_origin, t_origin))
-                    n_pixels_correct += n_correct
+                    n_pixels_total += t_origin.numel()
+                    n_pixels_correct += (y_origin == t_origin).sum().int()
 
-            if n_tasks_correct == n_tasks_total:
+            if n_tasks_correct == n_tasks_total and total_loss_train < 0.01:
                 break
 
         print('Train Accuracy: {:>5.1f}% Tasks ({}/{}), {:>5.1f}% Pixels ({}/{}) | Train loss {:.4f}'.format(
@@ -142,9 +141,11 @@ class PixelEachSubstitutorL(LightningModuleBase):
             total_loss_train
         ))
 
+        print(self.model.pixel_sampler.L_weight.view(self.model.max_height, self.model.max_width).detach().cpu().numpy().round(1))
         self.progress.progress.remove_task(progress_id)
         self.model.eval()
-
+        
+    def training_step_test(self, batches_test):
         total_loss = 0
         n_pixels_correct = 0
         n_pixels_total = 0
