@@ -87,24 +87,24 @@ class PixelEachSubstitutorL(LightningModuleBase):
 
     def training_step(self, batches):
         batches_train, batches_test, task_id = batches
+        print('Task ID:', task_id)
 
         self.model = PixelEachSubstitutor()
         self.model.to(batches_train[0][0].device)
         opt = torch.optim.Adam(self.parameters(), lr=self.lr)
         
-        max_epochs = 200
+        max_epochs = 100
         total_loss_train = 0
         progress_id = self.progress._add_task(max_epochs, f'Epoch 1/{max_epochs}')
-        
-        print('Task ID:', task_id)
+        n_tasks_total = sum([len(b[0]) for b in batches_train])
 
         # Find Pattern in Train Data
         for i in range(max_epochs):
             self.update_progress(progress_id, i, max_epochs, task_id, total_loss_train)
             total_loss_train = 0
+            n_pixels_correct = 0
             n_pixels_total = 0
             n_tasks_correct = 0
-            n_pixels_correct = 0
 
             for (x, t) in batches_train:
                 # forward + backward + optimize
@@ -117,8 +117,6 @@ class PixelEachSubstitutorL(LightningModuleBase):
                 
                 total_loss_train += loss.item()
                 
-                if i != max_epochs-1:
-                    continue
 
                 with torch.no_grad():
                     y_prob = F.sigmoid(y.detach().cpu())
@@ -128,13 +126,16 @@ class PixelEachSubstitutorL(LightningModuleBase):
                     n_pixels = t_origin.numel()
 
                     n_pixels_total += n_pixels
-                    n_tasks_correct += n_correct == n_pixels
+                    n_tasks_correct += sum(torch.all(y_one == t_one).item() for y_one, t_one in zip(y_origin, t_origin))
                     n_pixels_correct += n_correct
 
+            if n_tasks_correct == n_tasks_total:
+                break
+
         print('Train Accuracy: {:>5.1f}% Tasks ({}/{}), {:>5.1f}% Pixels ({}/{}) | Train loss {:.4f}'.format(
-            n_tasks_correct / len(batches_train) * 100,
+            n_tasks_correct / n_tasks_total * 100,
             n_tasks_correct,
-            len(batches_train),
+            n_tasks_total,
             n_pixels_correct / n_pixels_total * 100, 
             n_pixels_correct,
             n_pixels_total,
@@ -166,13 +167,13 @@ class PixelEachSubstitutorL(LightningModuleBase):
                 n_tasks_correct += n_correct == n_pixels
                 n_pixels_correct += n_correct
 
-                if n_correct != n_pixels:
-                    visualize_image_using_emoji(x[0], t[0], y[0], torch.where(y_origin == t_origin, 3, 2))
+                visualize_image_using_emoji(x[0], t[0], y[0], torch.where(y_origin == t_origin, 3, 2))
+                print('Input | Target | Prediction | Correct')
                 print("Test {} | Correct: {} | Accuracy: {:>5.1f}% ({}/{})".format(
                     i+1, '🟩' if n_correct == n_pixels else '🟥', n_correct/n_pixels*100, n_correct, n_pixels, 
                 ))
 
-        print('Test Accuracy: {:>5.1f}% Tasks ({}/{}), {:>5.1f}% Pixels ({}/{}) | Test loss {:.4f}'.format(
+        print('Test Accuracy: {:>5.1f}% Tasks ({}/{}), {:>5.1f}% Pixels ({}/{}) | Test loss {:.4f}\n'.format(
             n_tasks_correct / len(batches_test) * 100,
             n_tasks_correct,
             len(batches_test),

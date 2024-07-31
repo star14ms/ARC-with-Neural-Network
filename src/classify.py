@@ -201,7 +201,7 @@ class ARCDataClassifier:
 
 def get_filter_funcs():
     filter_funcs = (
-        ARCDataClassifier.in_data_codes_f(['3aa6fb7a', '4258a5f9']),
+        ARCDataClassifier.in_data_codes_f(['4258a5f9', '3aa6fb7a', 'd364b489']), #
         # ARCDataClassifier.in_data_codes_f(['00d62c1b']),
         # ARCDataClassifier.is_same_shape_f(True),
         # ARCDataClassifier.is_shape_size_in_f(start=1, stop=21),

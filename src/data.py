@@ -152,17 +152,17 @@ class ARCDataset(Dataset):
         if self.solutions is None:
             return
 
-        # Augment solutions data
-        augmented_solutions = {}
-        for key, task in self.solutions.items():
-            augmented_task = []
+        # # Augment solutions data
+        # augmented_solutions = {}
+        # for key, task in self.solutions.items():
+        #     augmented_task = []
             
-            # Apply augmentations to each task item
-            for task_item in task:
-                augmented_task.extend(unique_augmentations(task_item, indices_to_remove_test[key]))
+        #     # Apply augmentations to each task item
+        #     for task_item in task:
+        #         augmented_task.extend(unique_augmentations(task_item, indices_to_remove_test[key]))
             
-            augmented_solutions[key] = augmented_task
-        self.solutions = augmented_solutions
+        #     augmented_solutions[key] = augmented_task
+        # self.solutions = augmented_solutions
 
 
 class ARCDataLoader(DataLoader):

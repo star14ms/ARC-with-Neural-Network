@@ -3,7 +3,7 @@ name: "PixelEachSubstitutor"
 params:
   max_epochs: 1
   batch_size_max: 8
-  augment_data: True
+  augment_data: False # Cause confusion for training some directional tasks like d364b489
   lr: 0.01
   save_dir: "./output/"
   ckpt_path: null

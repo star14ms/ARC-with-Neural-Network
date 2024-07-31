@@ -45,55 +45,52 @@ class PixelVectorExtractor(nn.Module):
 
 
 class PixelEachSubstitutor(nn.Module):
-    def __init__(self, num_classes=10, d_reduced_V_list=[81, 32], d_reduced_V2_list=[32, 8, 1], dim_feedforward=1, num_layers=1):
+    def __init__(self, num_classes=10, d_reduced_V_list=[9, 1], dim_feedforward=4, num_layers=1):
         super().__init__()
         self.V_extract = PixelVectorExtractor()
-        max_width = 9
-        max_height = 9
+        max_width = 3
+        max_height = 3
         self.max_V = max_width * max_height
-        self.V_feature = nn.Parameter(torch.randn([num_classes, d_reduced_V_list[-1]]))
+        self.C1 = nn.Parameter(torch.randn([1, num_classes]))
+        self.V1 = nn.Parameter(torch.randn([1, self.max_V]))
 
         self.C_self_attn = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(num_classes+1, 1, dim_feedforward, batch_first=True, bias=False),
-            num_layers=num_layers
+            num_layers=num_layers,
+            enable_nested_tensor=False
         )
 
-        self.ff_V = nn.Sequential()
-        for i in range(len(d_reduced_V_list)-1):
-            self.ff_V.add_module(f'linear_{i}', nn.Linear(d_reduced_V_list[i], d_reduced_V_list[i+1], bias=False))
-            if i != len(d_reduced_V_list)-2:
-                self.ff_V.add_module(f'relu_{i}', nn.ReLU())
-
+        self.attn_C = nn.TransformerDecoder(
+            nn.TransformerDecoderLayer(num_classes, num_classes, dim_feedforward, batch_first=True, bias=False),
+            num_layers=num_layers
+        )
         self.attn_V = nn.TransformerDecoder(
-            nn.TransformerDecoderLayer(d_reduced_V_list[-1], d_reduced_V_list[-1], dim_feedforward, batch_first=True, bias=False),
+            nn.TransformerDecoderLayer(self.max_V, self.max_V, dim_feedforward, batch_first=True, bias=False),
             num_layers=num_layers
         )
 
         self.decoder = nn.Sequential()
-        for i in range(len(d_reduced_V2_list)-1):
-            self.decoder.add_module(f'linear_{i}', nn.Linear(d_reduced_V2_list[i], d_reduced_V2_list[i+1], bias=False))
-            if i != len(d_reduced_V2_list)-2:
+        for i in range(len(d_reduced_V_list)-1):
+            self.decoder.add_module(f'linear_{i}', nn.Linear(d_reduced_V_list[i], d_reduced_V_list[i+1], bias=False))
+            if i != len(d_reduced_V_list)-2:
                 self.decoder.add_module(f'relu_{i}', nn.ReLU())
         
     def forward(self, x):
         N, C, H, W = x.shape
-        feature = self.V_extract(x)
-        N, S, C_IN, V_IN = feature.shape
+        feature_L = self.V_extract(x)
+        N, S, C_IN, L = feature_L.shape
 
-        feature = feature.view(N*S, C_IN, V_IN)
-        feature = F.pad(feature, (0, self.max_V-feature.size(2)), mode='constant', value=0)
+        feature_L = feature_L.view(N*S, C_IN, L)
+        feature_L = F.pad(feature_L, (0, self.max_V-feature_L.size(2)), mode='constant', value=0)
 
-        # Effect: Determine Which Color is used for padding
-        feature = self.C_self_attn(feature.transpose(2, 1)).transpose(2, 1) # [N*S, V, C]
+        feature_L = self.C_self_attn(feature_L.transpose(1, 2)).transpose(1, 2)[:,:-1] # [L, C] <- [L, C]
 
-        feature = self.ff_V(feature) # [N*S*C, V]
-        V = feature.shape[-1]
+        feature_L = feature_L.reshape(N*S, C, L)
+        feature = self.attn_V(feature_L, self.V1.repeat(N*S, 1, 1)) # [C, L] <- [1, L]
+        feature = self.attn_C(feature.transpose(1, 2), self.C1.repeat(N*S, 1, 1)).transpose(1, 2) # [L, C] <- [C, C]
 
-        y = self.V_feature.repeat(N*S, 1, 1)
-        y = self.attn_V(y, feature) # [N*S, C, V], [N*S, C_IN, V]
-        y = y.view(N*S*C, V)
-
-        y = self.decoder(y) # [N*S*C, 1]
+        y = feature.reshape(N*S*C, L)
+        y = self.decoder(y) # [N*S, C]
         y = y.view(N, H, W, C).permute(0, 3, 1, 2) # [N, C, H, W]
 
         return y
