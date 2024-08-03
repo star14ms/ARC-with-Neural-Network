@@ -1,4 +1,4 @@
 defaults:
-  - data: FillerKeepInput
-  - model: FillerKeepInput
-  - test: FillerKeepInput
+  - data: PixelEachSubstitutor
+  - model: PixelEachSubstitutor
+  - test: PixelEachSubstitutor

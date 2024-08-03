@@ -6,10 +6,11 @@ from arc.utils.visualize import visualize_image_using_emoji
 
 
 class PixelVectorExtractor(nn.Module):
-    def __init__(self, max_L, dim_feedforward, num_layers=1, bias=False, pad_value=0, num_classes=10):
+    def __init__(self, max_width, max_height, dim_feedforward, num_layers=1, bias=False, pad_value=0, num_classes=10):
         super().__init__()
         self.pad_value = pad_value
-        self.max_L = max_L
+        self.max_width = max_width
+        self.max_height = max_height
 
         self.C_self_attn = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(num_classes+1, 1, dim_feedforward, batch_first=True, bias=bias),
@@ -20,12 +21,17 @@ class PixelVectorExtractor(nn.Module):
     def forward(self, x):
         N, C, H, W = x.shape
 
-        H_PAD = H - 1
-        W_PAD = W - 1
-        HL = H + H_PAD
-        WL = W + W_PAD
+        # H_PAD = H - 1
+        # W_PAD = W - 1
+        # HL = H + H_PAD
+        # WL = W + W_PAD
 
-        x_C1 = torch.ones_like(x[:,:1])
+        H_PAD = 3
+        W_PAD = 3
+        HL = 1 + 2*H_PAD
+        WL = 1 + 2*W_PAD
+
+        x_C1 = torch.zeros_like(x[:,:1])
         x_C1 = F.pad(x_C1, (W_PAD, W_PAD, H_PAD, H_PAD), mode='constant', value=1)
 
         # add one more color dimension meaning padding or not
@@ -34,21 +40,21 @@ class PixelVectorExtractor(nn.Module):
         x = x.permute(0, 2, 3, 1)
 
         x = torch.stack([x[n].unfold(0, HL, 1).unfold(1, WL, 1) for n in range(N)], dim=0) # [N, H, W, C, HL, WL]
-        x = x.view(N, H*W, C+1, HL*WL) # [N, S, C, L] where S = H*W, L = HL*WL
-        N, S, C_IN, L = x.shape
+        x = x.view(N*H*W*(C+1), HL, WL) # [N, S, C, L] where S = H*W
 
         # Padding to Max Length
-        x = x.view(N*S, C_IN, L)
-        x = F.pad(x, (0, self.max_L-x.size(2)), mode='constant', value=0)
+        x_max = torch.full([N*H*W*(C+1), self.max_height, self.max_width], fill_value=self.pad_value, dtype=x.dtype, device=x.device)
+        x_max[:,:HL,:WL] = x
 
         # Predict Padding Colors
-        x = self.C_self_attn(x.transpose(1, 2)).transpose(1, 2)[:,:-1] # [L, C] <- [L, C]
+        x_max = x_max.view(N*H*W, C+1, -1)
+        x_max = self.C_self_attn(x_max.transpose(1, 2)).transpose(1, 2)[:,:-1] # [L, C] <- [L, C]
 
-        return x
+        return x_max
 
 
 class RelatedPixelSampler(nn.Module): 
-    def __init__(self, n_dim, d_reduced_L_list, dropout=0.3, bias=False):
+    def __init__(self, n_dim, d_reduced_L_list, dropout=0.1, bias=False):
         super().__init__()
         self.L_weight = nn.Parameter(torch.ones([n_dim]))
         self.dropout = nn.Dropout(dropout)
@@ -65,13 +71,13 @@ class RelatedPixelSampler(nn.Module):
         x = x * self.dropout(self.L_weight)
 
         # Remain Significant Relative Locations from Each Pixel
-        x = self.ff_L(x.reshape(-1, self.n_dim)) # [N*S, C, L]
+        x = self.ff_L(x.reshape(-1, self.n_dim)) # [N*S*C, L]
 
         return x
 
 
 class Reasoner(nn.Module):
-    def __init__(self, n_dim, d_reduced_V_list, dim_feedforward=4, num_layers=1, bias=False, num_classes=10):
+    def __init__(self, n_dim, d_reduced_V_list, dim_feedforward=1, num_layers=1, bias=False, num_classes=10):
         super().__init__()
         self.num_classes = num_classes
 
@@ -111,14 +117,15 @@ class Reasoner(nn.Module):
 
 
 class PixelEachSubstitutor(nn.Module):
-    def __init__(self, d_reduced_L_list=[400, 16], d_reduced_V_list=[16, 1], dim_feedforward=4, num_layers=1, pad_value=0, dropout=0.1, num_classes=10):
+    def __init__(self, d_reduced_L_list=[49, 32], d_reduced_V_list=[32, 1], dim_feedforward=1, num_layers=1, pad_value=0, dropout=0.1, num_classes=10):
         super().__init__()
-        self.max_width = 20
-        self.max_height = 20
-        self.max_L = self.max_width * self.max_height
+        self.max_width = 7
+        self.max_height = 7
+        max_L = self.max_width * self.max_height
 
         self.abstractor = PixelVectorExtractor(
-            max_L=self.max_L, 
+            max_width=self.max_width,
+            max_height=self.max_height,
             dim_feedforward=dim_feedforward, 
             num_layers=num_layers,
             bias=False,
@@ -127,7 +134,7 @@ class PixelEachSubstitutor(nn.Module):
         )
 
         self.pixel_sampler = RelatedPixelSampler(
-            n_dim=self.max_L,
+            n_dim=max_L,
             d_reduced_L_list=d_reduced_L_list,
             dropout=dropout,
             bias=False,
@@ -137,7 +144,7 @@ class PixelEachSubstitutor(nn.Module):
             n_dim=d_reduced_L_list[-1], 
             d_reduced_V_list=d_reduced_V_list, 
             dim_feedforward=dim_feedforward, 
-            num_layers=num_layers,
+            num_layers=1,
             bias=False,
             num_classes=num_classes
         )
