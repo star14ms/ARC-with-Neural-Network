@@ -4,9 +4,9 @@ from torch import nn
 import torch.nn.functional as F
 from rich import print
 
-from arc_prize.model.fill.keep_input import FillerKeepInput
-from arc_prize.model.fill.ignore_color import FillerKeepInputIgnoreColor
-from arc_prize.utils.visualize import plot_xyt, visualize_image_using_emoji
+from arc.model.fill.keep_input import FillerKeepInput
+from arc.model.fill.ignore_color import FillerKeepInputIgnoreColor
+from arc.utils.visualize import plot_xyt, visualize_image_using_emoji
 
 
 class LightningModuleBase(pl.LightningModule):

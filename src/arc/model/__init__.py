@@ -3,11 +3,11 @@ from typing import List
 
 
 def get_model_class(model_name: str):
-    from arc_prize.model.fill.lightning import (
+    from arc.model.fill.lightning import (
         FillerKeepInputL,
         FillerKeepInputIgnoreColorL,
     )
-    from arc_prize.model.substitute.lightning import (
+    from arc.model.substitute.lightning import (
         PixelEachSubstitutorL,
     )
 
@@ -44,7 +44,7 @@ class TrainConfig:
 class TestConfig:
     model_path: str = "./output/model_FillerKeepInput.ckpt"
     verbose_single: bool = False
-    augment_data: bool = False
+    augment_data: bool = False # Rotate and Flip
 
 @dataclass
 class ModelConfig:

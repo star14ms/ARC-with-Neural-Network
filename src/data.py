@@ -4,8 +4,8 @@ from torch.utils.data import Dataset, DataLoader
 from pytorch_lightning import LightningDataModule
 
 from classify import get_filter_funcs
-from arc_prize.preprocess import one_hot_encode, one_hot_encode_changes
-from arc_prize.utils.transform import collate_fn_same_shape
+from arc.preprocess import one_hot_encode, one_hot_encode_changes
+from arc.utils.transform import collate_fn_same_shape
 from lightning_fabric.utilities.data import suggested_max_num_workers
 from functools import partial
 
@@ -233,10 +233,10 @@ class ARCDataModule(LightningDataModule):
 
 if __name__ == '__main__':
     from rich import print
-    from arc_prize.utils.visualize import plot_task
+    from arc.utils.visualize import plot_task
     import os
     
-    from arc_prize.constants import get_challenges_solutions_filepath
+    from arc.constants import get_challenges_solutions_filepath
 
     data_category = 'train'
     fdir_to_save = None

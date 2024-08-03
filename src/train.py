@@ -12,7 +12,7 @@ from rich import print
 from rich.traceback import install
 install()
 
-from arc_prize.model import (
+from arc.model import (
     get_model_class,
     DataConfig,
     TrainConfig,
@@ -21,7 +21,7 @@ from arc_prize.model import (
     FillerKeepInputIgnoreColorConfig,
     PixelEachSubstitutorConfig,
 )
-from arc_prize.utils.lightning_custom import RichProgressBarCustom
+from arc.utils.lightning_custom import RichProgressBarCustom
 from data import ARCDataModule
 from test import test as test_fn
 

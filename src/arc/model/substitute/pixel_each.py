@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from arc_prize.utils.visualize import visualize_image_using_emoji
+from arc.utils.visualize import visualize_image_using_emoji
 
 
 class PixelVectorExtractor(nn.Module):

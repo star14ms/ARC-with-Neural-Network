@@ -1,8 +1,8 @@
 import torch
 from torch import nn
 
-from arc_prize.model.components.convfixedkernel import Conv2dEncoderLayer
-from arc_prize.constants import COLORS
+from arc.model.components.convfixedkernel import Conv2dEncoderLayer
+from arc.constants import COLORS
 
 
 class ConvSameColorFeatureExtractor(nn.Module):

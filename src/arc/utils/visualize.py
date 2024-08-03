@@ -3,7 +3,7 @@ from matplotlib import colors
 import os
 import torch
 
-from arc_prize.constants import COLORS
+from arc.constants import COLORS
 
 
 def plot_task(dataset, idx, data_category, fdir_to_save=None):

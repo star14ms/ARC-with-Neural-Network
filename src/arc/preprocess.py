@@ -1,5 +1,5 @@
 import torch
-from arc_prize.constants import COLORS
+from arc.constants import COLORS
 
 
 def one_hot_encode(matrix, num_classes=len(COLORS), cold_value=0, last_dim_ones=False):

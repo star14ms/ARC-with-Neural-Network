@@ -4,10 +4,10 @@ from pytorch_lightning.trainer.connectors.accelerator_connector import _Accelera
 from rich import print
 
 from data import ARCDataset
-from arc_prize.model.fill.keep_input import FillerKeepInput
-from arc_prize.model.substitute.pixel_each import PixelEachSubstitutor
-from arc_prize.constants import get_challenges_solutions_filepath
-from arc_prize.utils.visualize import plot_task
+from arc.model.fill.keep_input import FillerKeepInput
+from arc.model.substitute.pixel_each import PixelEachSubstitutor
+from arc.constants import get_challenges_solutions_filepath
+from arc.utils.visualize import plot_task
 
 
 def profile_model(model, inputs):

@@ -11,16 +11,16 @@ from rich import print
 from rich.traceback import install
 install()
 
-from arc_prize.model import (
+from arc.model import (
     get_model_class,
     DataConfig, 
     TestConfig, 
     FillerKeepInputConfig,
     FillerKeepInputIgnoreColorConfig
 )
-from arc_prize.utils.visualize import plot_xyt, plot_xyts, visualize_image_using_emoji
-from arc_prize.preprocess import reconstruct_t_from_one_hot
-from arc_prize.constants import get_challenges_solutions_filepath
+from arc.utils.visualize import plot_xyt, plot_xyts, visualize_image_using_emoji
+from arc.preprocess import reconstruct_t_from_one_hot
+from arc.constants import get_challenges_solutions_filepath
 from data import ARCDataset
 
 
@@ -117,8 +117,8 @@ def test(config, model=None):
 cs = ConfigStore.instance()
 cs.store(group="data", name="base_data", node=DataConfig, package="data")
 cs.store(group="test", name="base_test", node=TestConfig, package="test")
-cs.store(group="model", name="base_FillerKeepInput", node=FillerKeepInputConfig, package="arc_prize")
-cs.store(group="model", name="base_FillerKeepInputIgnoreColor", node=FillerKeepInputIgnoreColorConfig, package="arc_prize")
+cs.store(group="model", name="base_FillerKeepInput", node=FillerKeepInputConfig, package="arc")
+cs.store(group="model", name="base_FillerKeepInputIgnoreColor", node=FillerKeepInputIgnoreColorConfig, package="arc")
 
 
 @hydra.main(config_path=os.path.join('..', "configs"), config_name="test", version_base=None)

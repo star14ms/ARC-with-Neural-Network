@@ -4,8 +4,8 @@ from torch import nn
 import torch.nn.functional as F
 from rich import print
 
-from arc_prize.model.substitute.pixel_each import PixelEachSubstitutor
-from arc_prize.utils.visualize import visualize_image_using_emoji
+from arc.model.substitute.pixel_each import PixelEachSubstitutor
+from arc.utils.visualize import visualize_image_using_emoji
 
 
 class LightningModuleBase(pl.LightningModule):

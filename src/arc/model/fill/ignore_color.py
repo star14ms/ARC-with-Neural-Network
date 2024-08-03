@@ -1,8 +1,8 @@
 import torch
 from torch import nn
 
-from arc_prize.model.components.convfixedkernel import Conv2dEncoderLayer
-from arc_prize.model.components.attention import ReductiveAttention
+from arc.model.components.convfixedkernel import Conv2dEncoderLayer
+from arc.model.components.attention import ReductiveAttention
 
 
 class ConvFeatureExtractor(nn.Module):
