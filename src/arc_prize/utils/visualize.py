@@ -225,7 +225,6 @@ def visualize_image_using_emoji(*images):
     images = [image.squeeze(0).detach().cpu() for image in images]
     images = [torch.argmax(image, dim=0).long() if len(image.shape) > 2 else image for image in images]
     
-    print()
     for h in range(max(images, key=lambda x: x.shape[0]).shape[0]):
         line = ''
         for image in images:
