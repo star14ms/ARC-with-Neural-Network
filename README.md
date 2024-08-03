@@ -11,7 +11,7 @@
 
 ## Main Libraries
 - [Pytorch](https://pytorch.org/tutorials/) (Machine Learning Framework)
-- [Pytorch Lightning](https://lightning.ai/docs/pytorch/stable/) (Lightweight PyTorch wrapper)
+- [Pytorch Lightning](https://lightning.ai/docs/pytorch/stable/) (Lightweight PyTorch Wrapper)
 - [Hydra](https://hydra.cc/docs/intro/) (Configuration Manager)
 - [Rich](https://github.com/Textualize/rich) (Formatting)
 
@@ -26,7 +26,7 @@ conda activate myenv
 
 # 2. Download ARC Data
 
-> To use Kaggle API, place [kaggle.json](https://github.com/Kaggle/kaggle-api/blob/main/docs/README.md#api-credentials) in the locatioin appropriate for your operating system  first to your environment
+> To use Kaggle API, place [kaggle.json](https://github.com/Kaggle/kaggle-api/blob/main/docs/README.md#api-credentials) in the location appropriate for your operating system
 
 ```zsh
 mkdir data
