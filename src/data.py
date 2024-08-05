@@ -2,6 +2,7 @@ import json
 import torch
 from torch.utils.data import Dataset, DataLoader
 from pytorch_lightning import LightningDataModule
+from collections import OrderedDict
 
 from classify import get_filter_funcs
 from arc.preprocess import one_hot_encode, one_hot_encode_changes
@@ -52,6 +53,11 @@ class ARCDataset(Dataset):
             
         if augment_data:
             self.augment_data()
+        
+        # reordering challenges based on the argument of the filter function, in_data_codes()
+        if len(filter_funcs) > 0 and type(filter_funcs[0]).__name__ == 'partial' and filter_funcs[0].func.__name__ == 'in_data_codes' and filter_funcs[0].keywords.get('reorder'):
+            self.challenges = OrderedDict(sorted(self.challenges.items(), key=lambda x: filter_funcs[0].keywords.get('codes').index(x[0])))
+            self.solutions = OrderedDict(sorted(self.solutions.items(), key=lambda x: filter_funcs[0].keywords.get('codes').index(x[0]))) if self.solutions is not None else None
 
     def __len__(self):
         return len(self.challenges)
@@ -179,7 +185,7 @@ class ARCDataLoader(DataLoader):
 
 
 class ARCDataModule(LightningDataModule):
-    def __init__(self, base_path='./data/arc-prize-2024/', batch_size_max=1, shuffle=True, augment_data=False, cold_value=-1, ignore_color=False, num_workers=None, local_world_size=1, debug=False):
+    def __init__(self, base_path='./data/arc-prize-2024/', batch_size_max=1, shuffle=True, augment_data=False, filter_funcs=None, cold_value=-1, ignore_color=False, num_workers=None, local_world_size=1, debug=False):
         super().__init__()
         self.base_path = base_path
         self.challenges_train = self.base_path + 'arc-agi_training_challenges.json'
@@ -192,6 +198,7 @@ class ARCDataModule(LightningDataModule):
         self.batch_size_max = batch_size_max
         self.shuffle = shuffle
         self.augment_data = augment_data
+        self.filter_funcs = filter_funcs if filter_funcs is not None else get_filter_funcs()
         self.cold_value = cold_value
         self.ignore_color = ignore_color
 
@@ -211,8 +218,8 @@ class ARCDataModule(LightningDataModule):
 
         # Assign train/val datasets for use in dataloaders
         if stage == 'fit' or stage is None:
-            self.train_dataset = ARCDataset(self.challenges_train, self.solutions_train, **kwargs)
-            self.val_dataset = ARCDataset(self.challenges_val, self.solutions_val, **kwargs)
+            self.train_dataset = ARCDataset(self.challenges_train, self.solutions_train, filter_funcs=self.filter_funcs, **kwargs)
+            self.val_dataset = ARCDataset(self.challenges_val, self.solutions_val, filter_funcs=self.filter_funcs, **kwargs)
 
         # Assign test dataset for use in dataloader(s)
         if stage == 'test' or stage is None:

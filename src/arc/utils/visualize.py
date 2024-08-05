@@ -254,6 +254,6 @@ def visualize_image_using_emoji(*images):
                 elif pixel_key == 9:
                     line += '🟫'
                 else:
-                    line += '❌'
+                    line += '◽️'
             line += '  '
         print(line)

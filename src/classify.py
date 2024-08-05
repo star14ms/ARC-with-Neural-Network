@@ -138,11 +138,11 @@ class ARCDataClassifier:
             return lambda *args, **kwargs: not ARCDataClassifier.is_dominent_color_stable(*args, **kwargs)
 
     
-    def in_data_codes_f(codes, *args, **kwargs):
+    def in_data_codes_f(codes, reorder=False, *args, **kwargs):
         def in_data_codes(xs, ys, key, *args, **kwargs):
             return True if key in codes else False
         
-        return partial(in_data_codes, *args, **kwargs)
+        return partial(in_data_codes, codes=codes, reorder=reorder, *args, **kwargs)
 
 
     def is_same_number_of_pixels_of_one_color(xs, ys, *args, **kwargs):
@@ -201,13 +201,16 @@ class ARCDataClassifier:
 
 def get_filter_funcs():
     filter_funcs = (
-        ARCDataClassifier.in_data_codes_f(['4258a5f9', '3aa6fb7a', 'd364b489']), #
-        # ARCDataClassifier.in_data_codes_f(['00d62c1b']),
-        # ARCDataClassifier.is_same_shape_f(True),
+        # ARCDataClassifier.in_data_codes_f(['95990924']),
+        # ARCDataClassifier.in_data_codes_f([
+        #     '4258a5f9', 'ce22a75a', 'b60334d2', 'b1948b0a', 'c8f0f002', 'f76d97a5', 'd90796e8', '25d8a9c8', '0d3d703e', '3aa6fb7a', 'a699fb00', '0ca9ddb6', 'd364b489', '95990924', 
+        # ], reorder=True)),
+        # ARCDataClassifier.in_data_codes_f([
+        #     '60b61512', '22233c11', '3e980e27', '72322fa7', '88a10436', '11852cab',
+        #     '0962bcdd', '36d67576', '913fb3ed', '56ff96f3', 'e9614598', 'af902bf9', '928ad970'
+        # ], reorder=True),
+        ARCDataClassifier.is_same_shape_f(True),
         # ARCDataClassifier.is_shape_size_in_f(start=1, stop=21),
-        # ARCDataClassifier.is_n_color_stable_f(1),
-        # ARCDataClassifier.is_same_colors_f(False),
-        # ARCDataClassifier.is_dominent_color_stable_f(True)
     )
     return filter_funcs
 
@@ -224,17 +227,10 @@ if __name__ == '__main__':
     challenges, solutions = get_challenges_solutions_filepath(data_category)
 
     # Example usage
-    # filter_funcs = get_filter_funcs()
-    filter_funcs = (
-        ARCDataClassifier.in_data_codes_f(['3aa6fb7a', '4258a5f9']),
-        # ARCDataClassifier.in_data_codes_f(['239be575', '25ff71a9', '27a28665', 'ff28f65a']),
-        # ARCDataClassifier.in_data_codes_f(['3c9b0459', '5582e5ca', '74dd1130', 'caa06a1f', 'e8dc4411', 'e9afcf9a']), # 100% pixels incorrect
-        # ARCDataClassifier.is_same_shape_f(True),
-        # ARCDataClassifier.is_shape_size_in_f(start=1, stop=21, bool=False),
-        # ARCDataClassifier.is_n_color_stable_f(1),
-        # ARCDataClassifier.is_same_colors_f(False),
-        # ARCDataClassifier.is_dominent_color_stable_f(True)
-    )
+    filter_funcs = get_filter_funcs()
+    # filter_funcs = (
+    #     ARCDataClassifier.is_same_shape_f(True),
+    # )
 
     dataset = ARCDataset(challenges, solutions, one_hot=False, filter_funcs=filter_funcs)
     print(f'Data size: {len(dataset)}')

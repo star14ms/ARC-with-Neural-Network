@@ -163,7 +163,7 @@ class PixelEachSubstitutorL(LightningModuleBase):
             visualize_image_using_emoji(x[0], t[0], y[0], torch.where(y_origin == t_origin, 3, 2))
 
             print('Input | Target | Prediction | Correct')
-            print("Test {} | Correct: {} | Accuracy: {:>5.1f}% ({}/{})\n".format(
+            print("Test {} | Correct: {} | Accuracy: {:>5.1f}% ({}/{})".format(
                 i+1, '🟩' if n_correct == n_pixels else '🟥', n_correct/n_pixels*100, n_correct, n_pixels, 
             ))
 
