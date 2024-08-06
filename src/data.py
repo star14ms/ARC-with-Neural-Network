@@ -12,7 +12,7 @@ from functools import partial
 
 
 class ARCDataset(Dataset):
-    def __init__(self, challenge_json, solution_json=None, filter_funcs=get_filter_funcs(), one_hot=True, cold_value=-1, augment_data=False, ignore_color=False):
+    def __init__(self, challenge_json, solution_json=None, filter_funcs=get_filter_funcs(), one_hot=True, cold_value=-1, augment_data=False, augment_test_data=False, ignore_color=False):
         self.one_hot = one_hot
         self.cold_value = cold_value
         self.ignore_color = ignore_color
@@ -52,7 +52,7 @@ class ARCDataset(Dataset):
             self.solutions = {key: task for key, task in self.solutions.items() if key in self.challenges}
             
         if augment_data:
-            self.augment_data()
+            self.augment_data(augment_test_data)
         
         # reordering challenges based on the argument of the filter function, in_data_codes()
         if len(filter_funcs) > 0 and type(filter_funcs[0]).__name__ == 'partial' and filter_funcs[0].func.__name__ == 'in_data_codes' and filter_funcs[0].keywords.get('reorder'):
@@ -87,7 +87,7 @@ class ARCDataset(Dataset):
     def task_id(self, idx):
         return list(self.challenges.keys())[idx]
 
-    def augment_data(self):
+    def augment_data(self, augment_test_data):
         '''Augment data by adding all possible rotated and flipped versions without duplicates'''
 
         def unique_augmentations(tensor, indices_to_remove=None):
@@ -146,6 +146,11 @@ class ARCDataset(Dataset):
                 augmented_task['train']['input'].extend(unique_inputs)
                 augmented_task['train']['output'].extend(unique_outputs)
 
+            if not augment_test_data:
+                augmented_task['test']['input'] = task['test']['input']
+                augmented_challenges[key] = augmented_task
+                continue
+
             # Apply augmentations to test data (input only)
             for input_tensor in task['test']['input']:
                 unique_inputs, indices_to_remove = unique_augmentations(input_tensor)
@@ -154,21 +159,21 @@ class ARCDataset(Dataset):
             
             augmented_challenges[key] = augmented_task
         self.challenges = augmented_challenges
-        
-        if self.solutions is None:
+
+        if self.solutions is None or not augment_test_data:
             return
 
-        # # Augment solutions data
-        # augmented_solutions = {}
-        # for key, task in self.solutions.items():
-        #     augmented_task = []
+        # Augment solutions data
+        augmented_solutions = {}
+        for key, task in self.solutions.items():
+            augmented_task = []
             
-        #     # Apply augmentations to each task item
-        #     for task_item in task:
-        #         augmented_task.extend(unique_augmentations(task_item, indices_to_remove_test[key]))
+            # Apply augmentations to each task item
+            for task_item in task:
+                augmented_task.extend(unique_augmentations(task_item, indices_to_remove_test[key]))
             
-        #     augmented_solutions[key] = augmented_task
-        # self.solutions = augmented_solutions
+            augmented_solutions[key] = augmented_task
+        self.solutions = augmented_solutions
 
 
 class ARCDataLoader(DataLoader):

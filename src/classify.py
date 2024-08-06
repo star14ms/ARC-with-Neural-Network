@@ -232,7 +232,7 @@ if __name__ == '__main__':
     #     ARCDataClassifier.is_same_shape_f(True),
     # )
 
-    dataset = ARCDataset(challenges, solutions, one_hot=False, filter_funcs=filter_funcs)
+    dataset = ARCDataset(challenges, solutions, one_hot=False, augment_data=False, augment_test_data=False, filter_funcs=filter_funcs)
     print(f'Data size: {len(dataset)}')
 
     # Visualize a task

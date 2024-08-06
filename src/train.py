@@ -26,7 +26,7 @@ from data import ARCDataModule
 from test import test as test_fn
 
 
-def train(config: DictConfig, model=None, test=False, return_model=False):
+def train(config: DictConfig, model=None, filter_funcs=None, test=False, return_model=False):
     hparams_data = OmegaConf.to_container(config.data.params, resolve=True)
     hparams_model = OmegaConf.to_container(config.model.params, resolve=True)
     hparams_train = OmegaConf.to_container(config.train.params, resolve=True)
@@ -67,7 +67,7 @@ def train(config: DictConfig, model=None, test=False, return_model=False):
             # ModelCheckpoint(every_n_epochs=50, save_top_k=3, monitor='epoch', mode='max')
         ]
     )
-    datamodule = ARCDataModule(local_world_size=trainer.num_devices, **hparams_data)
+    datamodule = ARCDataModule(local_world_size=trainer.num_devices, filter_funcs=filter_funcs, **hparams_data)
 
     # Train the model
     trainer.fit(model, datamodule=datamodule, ckpt_path=ckpt_path)
@@ -78,7 +78,7 @@ def train(config: DictConfig, model=None, test=False, return_model=False):
     save_path = os.path.join(save_dir, '{}.ckpt'.format(model.model.__class__.__name__))
     trainer.save_checkpoint(save_path)
     print('Model saved to:', save_path)
-    
+
     if test:
         test_fn(config, model)
 

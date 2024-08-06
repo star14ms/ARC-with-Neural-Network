@@ -80,7 +80,7 @@ def _test(config, model, dataset_train, device, verbose_single):
             plot_xyts(task_result, title_prefix=key)
 
 
-def test(config, model=None):
+def test(config, filter_funcs=None, model=None):
     hparams_data = OmegaConf.to_container(config.data.params, resolve=True)
     hparams_model = OmegaConf.to_container(config.model.params, resolve=True)
     hparmas_test = OmegaConf.to_container(config.test.params, resolve=True)
@@ -107,7 +107,7 @@ def test(config, model=None):
 
     # Reading files
     challenges, solutions = get_challenges_solutions_filepath(data_category='train', base_path=base_path)
-    dataset = ARCDataset(challenges, solutions, augment_data=augment_data, **hparams_data)
+    dataset = ARCDataset(challenges, solutions, augment_data=augment_data, filter_funcs=filter_funcs, **hparams_data)
     torch.set_printoptions(sci_mode=False, precision=1)
 
     with torch.no_grad():
