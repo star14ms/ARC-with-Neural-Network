@@ -81,7 +81,7 @@ def plot_xyt(*images, task_id, titles=('Input', 'Predicted', 'Answer', 'Correct'
         images = images[:1] + (images[2], images[1]) + (images[3:] if len(images) > 3 else tuple())
         titles = titles[:1] + (titles[2], titles[1]) + (titles[3:] if len(titles) > 3 else tuple())
     
-    fig, axs = plt.subplots(1, num_img, figsize=(9, num_img))
+    fig, axs = plt.subplots(1, num_img, figsize=(len(images)*3, 3))
     plt.suptitle(f'Task {task_id}', fontsize=20, fontweight='bold', y=0.96)
     
     cmap = colors.ListedColormap(COLORS)
@@ -208,7 +208,7 @@ def print_image_with_probs(*images):
     print()
 
 
-def visualize_image_using_emoji(*images):
+def visualize_image_using_emoji(*images, titles=['Input', 'Target', 'Prediction', 'Correct']):
     '''
     ⬛️ = 0, 🟦 = 1, 🟥 = 2, 🟩 = 3, 🟨 = 4, ⬜️ = 5, 🟪 = 6, 🟧 = 7, ⏹️ = 8, 🟫 = 9
     '''
@@ -217,8 +217,14 @@ def visualize_image_using_emoji(*images):
     images = [torch.argmax(image, dim=0).long() if len(image.shape) > 2 else image for image in images]
     is_ipython = is_notebook()
 
+    n_lines = max(images, key=lambda x: x.shape[0]).shape[0]
+
     line = ''
-    for h in range(max(images, key=lambda x: x.shape[0]).shape[0]):
+    for title, image_width in zip(titles, [image.shape[1] for image in images]):
+        line += title.ljust(image_width * 2) + '  '
+    line += '\n'
+
+    for h in range(n_lines):
         for image in images:
             if h >= image.shape[0]:
                 line += image.shape[1] * '  ' + '  '
@@ -248,5 +254,5 @@ def visualize_image_using_emoji(*images):
                 else:
                     line += '◽️'
             line += '  '
-        line += '\n'
+        line += '\n' if h != n_lines - 1 else ''
     print(line)

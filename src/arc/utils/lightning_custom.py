@@ -17,7 +17,7 @@ class RichProgressBarCustom(RichProgressBar):
         # self.theme.progress_bar_pulse = 'bar.pulse'
 
     def _get_train_description(self, current_epoch: int) -> str:
-        train_description = f"Task 1"
+        train_description = f" Task 1"
         if self._trainer.fit_loop.max_batches is not None:
             train_description += f"/{self._trainer.fit_loop.max_batches}"
         if len(self.validation_description) > len(train_description):
@@ -58,7 +58,7 @@ class RichProgressBarCustom(RichProgressBar):
         batch: Any,
         batch_idx: int,
     ) -> None:
-        train_description = "Task {}/{}".format(batch_idx + 1, self._trainer.fit_loop.max_batches)
+        train_description = " Task {}/{}".format(batch_idx + 1, self._trainer.fit_loop.max_batches)
         self._update(self.train_progress_bar_id, batch_idx + 1, description=train_description)
         self._update_metrics(trainer, pl_module)
         self.refresh()
@@ -84,3 +84,9 @@ class RichProgressBarCustom(RichProgressBar):
             CustomTimeColumn(style=self.theme.time),
             ProcessingSpeedColumn(style=self.theme.processing_speed),
         ]
+
+    def get_metrics(self, trainer, model):
+        # don't show the version number
+        items = super().get_metrics(trainer, model)
+        items.pop("v_num", None)
+        return items
