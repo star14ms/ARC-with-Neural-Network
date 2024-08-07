@@ -103,7 +103,7 @@ def plot_xyt(*images, task_id, titles=('Input', 'Predicted', 'Answer', 'Correct'
     plt.show()
 
 
-def plot_xyts(task_result, title_prefix="Task", subtitles=('Inputs', 'Predictions', 'Answers', 'Corrects')):
+def plot_xyts(task_result, title_prefix="Task", subtitles=('Inputs', 'Outputs', 'Answers', 'Corrects')):
     """Plots rows of input, predicted, and answer triples for a set of tasks, using the ARC color scheme."""
     num_pairs = len(task_result)
     num_columns = len(task_result[0])
@@ -136,20 +136,39 @@ def plot_xyts(task_result, title_prefix="Task", subtitles=('Inputs', 'Prediction
     plt.show()
 
 
-def plot_xyt_from_json(file_path='./output/test_results.json', subtitles=('Inputs', 'Predictions', 'Answers', 'Corrects')):
+def plot_xyt_from_json(file_path='./output/test_results.json', titles=('Input', 'Output', 'Answer', 'Correct'), plot_only_correct=False, top_k=2):
     results = json.load(open(file_path, 'r'))
-    
-    for task_id, task_results in results.items():
-        for result in task_results:
-            inputs = result['inputs']
-            outputs = result['outputs']
-            targets = result['targets']
-            corrects = result['corrects']
-            hparams = result['hparams']
 
-            print(f'Task {task_id}: {hparams}')
-            plot_xyt(inputs, outputs, targets, corrects, task_id=task_id, titles=subtitles)
-        
+    exist_label_information = list(results.values())[0][0][0].get('target') is not None
+    assert not plot_only_correct or exist_label_information, 'The results do not contain answer.'
+
+    if exist_label_information:
+        n_correct = sum(
+            all(any(
+                all(all(pixel == 3 for pixel in row) for row in trial['correct_pixels'])
+                    for trial in trials[:top_k if len(trials) <= top_k and plot_only_correct else len(trials)]) for trials in task_result)
+            for task_result in results.values())
+        print('N Data: {} | N Correct: {} | Accuracy: {:.2f}%'.format(len(results), n_correct, n_correct / len(results) * 100))
+    else:
+        print('N Data:', len(results))
+
+    for task_id, task_result in results.items():
+        if plot_only_correct and not all(any(
+            all(all(pixel == 3 for pixel in row) for row in trial['correct_pixels']) 
+                for trial in trials[:min(top_k, len(trials))]) for trials in task_result):
+            continue
+
+        for i, trials in enumerate(task_result):
+            for j, trial in enumerate(trials):
+                images = [trial[key] for key in ['input', 'output', 'target', 'correct_pixels'] if key in trial]
+                hparams = trial['hparams']
+                
+                if plot_only_correct and j == top_k:
+                    break
+
+                print(f'Task {task_id} | Test {i+1}: {hparams}')
+                plot_xyt(*images, task_id=task_id, titles=titles)
+
 
 def plot_kernels_and_outputs(y, kernels):
     # Plotting the output tensor and kernels
@@ -225,11 +244,11 @@ def print_image_with_probs(*images):
     print()
 
 
-def visualize_image_using_emoji(*images, titles=['Input', 'Target', 'Prediction', 'Correct']):
+def visualize_image_using_emoji(*images, titles=['Input', 'Output', 'Answer', 'Correct']):
     '''
     ⬛️ = 0, 🟦 = 1, 🟥 = 2, 🟩 = 3, 🟨 = 4, ⬜️ = 5, 🟪 = 6, 🟧 = 7, ⏹️ = 8, 🟫 = 9
     '''
-    
+
     images = [image.squeeze(0).detach().cpu() for image in images]
     images = [torch.argmax(image, dim=0).long() if len(image.shape) > 2 else image for image in images]
     is_ipython = is_notebook()
@@ -237,9 +256,10 @@ def visualize_image_using_emoji(*images, titles=['Input', 'Target', 'Prediction'
     n_lines = max(images, key=lambda x: x.shape[0]).shape[0]
 
     line = ''
-    for title, image_width in zip(titles, [image.shape[1] for image in images]):
-        line += title.ljust(image_width * 2) + '  '
-    line += '\n'
+    if titles:
+        for title, image_width in zip(titles, [image.shape[1] for image in images]):
+            line += title.ljust(image_width * 2) + '  '
+        line += '\n'
 
     for h in range(n_lines):
         for image in images:

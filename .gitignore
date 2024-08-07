@@ -173,6 +173,7 @@ outputs/
 # Model
 output/*.pth
 output/*.ckpt
+output/*.json
 output/task_visualization/*
 
 # Sub Repository

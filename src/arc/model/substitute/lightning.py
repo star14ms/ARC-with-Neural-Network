@@ -181,6 +181,7 @@ class PixelEachSubstitutorL(LightningModuleBase):
         n_pixels_correct = 0
         n_pixels_total = 0
         n_tasks_correct = 0
+        task_result = []
         outputs = []
 
         # Process Test Data
@@ -205,19 +206,21 @@ class PixelEachSubstitutorL(LightningModuleBase):
             if is_notebook():
                 plot_xyt(x[0], y[0], t[0], correct_pixels, task_id=task_id)
             else:
-                visualize_image_using_emoji(x[0], t[0], y[0], correct_pixels)
-                
-            self.test_results[task_id].append({
-                'inputs': x[0].tolist(),
-                'outputs': y_origin[0].tolist(),
-                'targets': t_origin[0].tolist(),
-                'corrects': correct_pixels[0].tolist(),
+                visualize_image_using_emoji(x[0], y[0], t[0], correct_pixels)
+
+            task_result.append({
+                'input': x[0].tolist(),
+                'output': y_origin[0].tolist(),
+                'target': t_origin[0].tolist(),
+                'correct_pixels': correct_pixels[0].tolist(),
                 'hparams': {**self.model_kwargs, **self.params_for_each_trial[n]},
             })
 
             print("Test {} | Correct: {} | Accuracy: {:>5.1f}% ({}/{})".format(
                 i+1, '🟩' if n_correct == n_pixels else '🟥', n_correct/n_pixels*100, n_correct, n_pixels, 
             ))
+
+        self.test_results[task_id].append(task_result)
 
         return {
             'loss': total_loss, 
@@ -253,11 +256,21 @@ class PixelEachSubstitutorL(LightningModuleBase):
 
     def add_submission(self, task_id, info, results):
         # choose top k outputs from all trials. Accuracy is the first priority, loss is the second.
-        results = sorted(results, key=lambda x: (x['accuracy'], -x['loss']), reverse=True)[:self.top_k_submission]
+        results = sorted(results, key=lambda x: (x['accuracy'], -x['loss']), reverse=True)
+
+        # I also want to get indices of the results to know which trial is the best before slicing
+        results_with_idx = [(i, result) for i, result in enumerate(results)]
+        results_with_idx = sorted(results_with_idx, key=lambda x: (x[1]['accuracy'], -x[1]['loss']), reverse=True)
+        results = [result for _, result in results_with_idx]
+        idxs_priority = [i for i, _ in results_with_idx]
 
         submission_task = [{} for _ in range(info['n_tasks_total'])]
-        for i, result in enumerate(results):
+        for i, result in enumerate(results[:self.top_k_submission]):
             for j, output in enumerate(result['outputs']):
                 submission_task[j][f'attempt_{i+1}'] = output.tolist()
 
         self.submission[task_id] = submission_task
+        
+        # change the format of the test results reordering based on the priority
+        self.test_results[task_id] = [self.test_results[task_id][idx] for idx in idxs_priority]
+        self.test_results[task_id] = list(zip(*self.test_results[task_id]))
