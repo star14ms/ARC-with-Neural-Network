@@ -52,9 +52,9 @@ class LightningModuleBase(pl.LightningModule):
         ))
         
         current_epoch = self.trainer.current_epoch
-        max_epochs = self.trainer.max_epochs
+        max_epochs_for_each_task = self.trainer.max_epochs_for_each_task
 
-        if current_epoch+1 == max_epochs:
+        if current_epoch+1 == max_epochs_for_each_task:
             self.progress.progress.stop()
 
         if self.n_pixels_correct_in_epoch == 0:
@@ -75,13 +75,19 @@ class LightningModuleBase(pl.LightningModule):
 
 
 class PixelEachSubstitutorL(LightningModuleBase):
-    def __init__(self, lr=0.001, model=None, max_epochs=300, *args, **kwargs):
+    def __init__(self, lr=0.001, model=None, max_trial=5, hyperparams_for_each_trial=[], max_epochs_for_each_task=300, train_loss_threshold_to_stop=0.01, *args, **kwargs):
         super().__init__(lr, *args, **kwargs)
 
         model = model if model is not None else PixelEachSubstitutor
         self.model = model(*args, **kwargs)
+        self.model_args = args
+        self.model_kwargs = kwargs
         self.loss_fn_source = nn.CrossEntropyLoss()
-        self.max_epochs = max_epochs
+
+        self.max_trial = max_trial
+        self.params_for_each_trial = hyperparams_for_each_trial if hyperparams_for_each_trial else [{}]*max_trial
+        self.max_epochs_for_each_task = max_epochs_for_each_task
+        self.train_loss_threshold_to_stop = train_loss_threshold_to_stop
     
     def forward(self, inputs, *args, **kwargs):
         # In Lightning, forward defines the prediction/inference actions
@@ -91,55 +97,61 @@ class PixelEachSubstitutorL(LightningModuleBase):
         batches_train, batches_test, task_id = batches
         print('Task ID: [bold]{}[/bold]'.format(task_id))
 
-        self.model = PixelEachSubstitutor()
-        self.model.to(batches_train[0][0].device)
-        opt = torch.optim.Adam(self.parameters(), lr=self.lr)
-        
-        self._training_step_train(batches_train, task_id, opt)
-        out = self._training_step_test(batches_test)
+        self._training_step_train(batches_train, task_id)
+        out = self._training_step_test(batches_test, task_id)
         return out
 
-    def _training_step_train(self, batches_train, task_id, opt):
-        max_epochs = self.max_epochs
-        total_loss_train = 0
-        progress_id = self.progress._add_task(max_epochs, f'Epoch 1/{max_epochs}')
+    def _training_step_train(self, batches_train, task_id):
+        max_epochs_for_each_task = self.max_epochs_for_each_task
         n_tasks_total = sum([len(b[0]) for b in batches_train])
-
-        # Find Pattern in Train Data
-        for i in range(max_epochs):
-            self.update_progress(progress_id, i, max_epochs, task_id, total_loss_train)
+        
+        for n in range(self.max_trial):
             total_loss_train = 0
-            n_pixels_correct = 0
-            n_pixels_total = 0
-            n_tasks_correct = 0
+            progress_id = self.progress._add_task(max_epochs_for_each_task, f'Epoch 1/{max_epochs_for_each_task}')
 
-            for (x, t) in batches_train:
-                # forward + backward + optimize
-                y = self.model(x)
-                loss = self.loss_fn_source(y, t)
+            self.model.__init__(*self.model_args, **{**self.model_kwargs, **self.params_for_each_trial[n]})
+            self.model.to(batches_train[0][0].device)
+            opt = torch.optim.Adam(self.parameters(), lr=self.lr)
 
-                opt.zero_grad()
-                loss.backward()
-                opt.step()
-                
-                total_loss_train += loss.item()
+            # Find Pattern in Train Data
+            for i in range(max_epochs_for_each_task):
+                self.update_progress(progress_id, i, task_id, total_loss_train)
+                total_loss_train = 0
+                n_pixels_correct = 0
+                n_pixels_total = 0
+                n_tasks_correct = 0
 
-                with torch.no_grad():
-                    y_origin = torch.argmax(y.detach().cpu(), dim=1).long() # [H, W]
-                    t_origin = torch.argmax(t.detach().cpu(), dim=1).long()
-                    n_tasks_correct += sum(torch.all(y_one == t_one).item() for y_one, t_one in zip(y_origin, t_origin))
-                    n_pixels_total += t_origin.numel()
-                    n_pixels_correct += (y_origin == t_origin).sum().int()
+                for (x, t) in batches_train:
+                    # forward + backward + optimize
+                    y = self.model(x)
+                    loss = self.loss_fn_source(y, t)
 
-            if n_tasks_correct == n_tasks_total and total_loss_train < 0.01:
+                    opt.zero_grad()
+                    loss.backward()
+                    opt.step()
+                    
+                    total_loss_train += loss.item()
+
+                    with torch.no_grad():
+                        y_origin = torch.argmax(y.detach().cpu(), dim=1).long() # [H, W]
+                        t_origin = torch.argmax(t.detach().cpu(), dim=1).long()
+                        n_tasks_correct += sum(torch.all(y_one == t_one).item() for y_one, t_one in zip(y_origin, t_origin))
+                        n_pixels_total += t_origin.numel()
+                        n_pixels_correct += (y_origin == t_origin).sum().int()
+
+                if n_tasks_correct == n_tasks_total and total_loss_train < self.train_loss_threshold_to_stop:
+                    break
+
+            self.progress.progress.remove_task(progress_id)
+
+            if n_tasks_correct == n_tasks_total:
+                self.print_log('Train', n_tasks_correct, n_tasks_total, n_pixels_correct, n_pixels_total, total_loss_train)
                 break
+            else:
+                self.print_log('Train', n_tasks_correct, n_tasks_total, n_pixels_correct, n_pixels_total, total_loss_train, end='\n')
+                print(f"Trial {n+1}/{self.max_trial} | Restarting the training")
 
-        self.print_log('Train', n_tasks_correct, n_tasks_total, n_pixels_correct, n_pixels_total, total_loss_train)
-        # print(self.model.pixel_sampler.L_weight.view(self.model.max_height, self.model.max_width).detach().cpu().numpy().round(1))
-        self.progress.progress.remove_task(progress_id)
-
-    def _training_step_test(self, batches_test):
-        self.model.eval()
+    def _training_step_test(self, batches_test, task_id):
         total_loss = 0
         n_pixels_correct = 0
         n_pixels_total = 0

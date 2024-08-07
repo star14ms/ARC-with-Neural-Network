@@ -18,3 +18,8 @@ params:
   C_dim_feedforward: 1
   dropout: 0.1
   num_classes: 10
+
+  max_trial: 1
+  hyperparams_for_each_trial: []
+  max_epochs_for_each_task: 300
+  train_loss_threshold_to_stop: 0.01

@@ -35,8 +35,8 @@ class DataConfig:
 @dataclass
 class TrainConfig:
     max_epochs: int = 1
-    augment_data: bool = True
     batch_size_max: int = 8
+    augment_data: bool = True
     lr: float = 0.01
     save_dir: str = "./output/"
     ckpt_path: str | None = None
@@ -84,3 +84,8 @@ class PixelEachSubstitutorConfig:
     C_num_layers: int = 1
     dropout: float = 0.1
     num_classes: int = 10
+
+    max_trial: int = 1
+    hyperparams_for_each_trial: List[dict] = tuple()
+    max_epochs_for_each_task: int = 300
+    train_loss_threshold_to_stop: float = 0.01
