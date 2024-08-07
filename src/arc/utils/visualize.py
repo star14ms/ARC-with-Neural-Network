@@ -2,6 +2,8 @@ import matplotlib.pyplot as plt
 from matplotlib import colors
 import os
 import torch
+import json
+from rich import print
 
 from arc.utils.print import is_notebook
 from arc.constants import COLORS
@@ -87,7 +89,7 @@ def plot_xyt(*images, task_id, titles=('Input', 'Predicted', 'Answer', 'Correct'
     cmap = colors.ListedColormap(COLORS)
     norm = colors.Normalize(vmin=0, vmax=9)
     
-    images = [image.detach().cpu().squeeze(0).long() for image in images if image is not None]
+    images = [image.detach().cpu().squeeze(0).long() if isinstance(image, torch.Tensor) else torch.tensor(image) for image in images if image is not None]
     images = [torch.argmax(image, dim=0) if len(image.shape) > 2 else image for image in images]
 
     for i in range(num_img):
@@ -112,7 +114,7 @@ def plot_xyts(task_result, title_prefix="Task", subtitles=('Inputs', 'Prediction
 
     fig, axs = plt.subplots(num_columns, num_pairs, figsize=(num_columns*6, 10))
     
-    task_result = [tuple(image.detach().cpu().squeeze(0).long() for image in images) for images in task_result]
+    task_result = [tuple(image.detach().cpu().squeeze(0).long() if isinstance(image, torch.Tensor) else torch.tensor(image) for image in images) for images in task_result]
     task_result = [tuple(torch.argmax(image, dim=0) if len(image.shape) > 2 else image for image in images) for images in task_result]
 
     # If there's only one task, axs may not be a 2D array
@@ -133,6 +135,21 @@ def plot_xyts(task_result, title_prefix="Task", subtitles=('Inputs', 'Prediction
     plt.tight_layout()
     plt.show()
 
+
+def plot_xyt_from_json(file_path='./output/test_results.json', subtitles=('Inputs', 'Predictions', 'Answers', 'Corrects')):
+    results = json.load(open(file_path, 'r'))
+    
+    for task_id, task_results in results.items():
+        for result in task_results:
+            inputs = result['inputs']
+            outputs = result['outputs']
+            targets = result['targets']
+            corrects = result['corrects']
+            hparams = result['hparams']
+
+            print(f'Task {task_id}: {hparams}')
+            plot_xyt(inputs, outputs, targets, corrects, task_id=task_id, titles=subtitles)
+        
 
 def plot_kernels_and_outputs(y, kernels):
     # Plotting the output tensor and kernels
@@ -256,3 +273,5 @@ def visualize_image_using_emoji(*images, titles=['Input', 'Target', 'Prediction'
             line += '  '
         line += '\n' if h != n_lines - 1 else ''
     print(line)
+
+

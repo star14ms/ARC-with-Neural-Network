@@ -85,6 +85,12 @@ def train(config: DictConfig, model=None, filter_funcs=None, test=False, return_
     with open(save_path, 'w') as f: 
         json.dump(model.submission, f)
     print('Submission saved to:', save_path)
+    
+    # Save the test results to disk (optional)
+    save_path = os.path.join(save_dir, 'test_results.json')
+    with open(save_path, 'w') as f:
+        json.dump(model.test_results, f)
+    print('Test results saved to:', save_path)
 
     if test:
         test_fn(config, model)

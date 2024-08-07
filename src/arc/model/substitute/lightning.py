@@ -3,6 +3,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from rich import print
+from collections import defaultdict
 
 from arc.model.substitute.pixel_each import PixelEachSubstitutor
 from arc.utils.visualize import visualize_image_using_emoji, plot_xyt
@@ -91,6 +92,7 @@ class PixelEachSubstitutorL(LightningModuleBase):
 
         self.submission = {}
         self.top_k_submission = top_k_submission
+        self.test_results = defaultdict(list)
     
     def forward(self, inputs, *args, **kwargs):
         # In Lightning, forward defines the prediction/inference actions
@@ -107,7 +109,7 @@ class PixelEachSubstitutorL(LightningModuleBase):
             info_train = self._training_step_train(batches_train, task_id, n)
             self.print_log('Train', **info_train)
 
-            info, outputs = self._training_step_test(batches_test, task_id)
+            info, outputs = self._training_step_test(batches_test, task_id, n)
             self.print_log('Test', **info)
 
             results.append({
@@ -174,7 +176,7 @@ class PixelEachSubstitutorL(LightningModuleBase):
             'n_tasks_total': n_tasks_total,
         }
 
-    def _training_step_test(self, batches_test, task_id):
+    def _training_step_test(self, batches_test, task_id, n):
         total_loss = 0
         n_pixels_correct = 0
         n_pixels_total = 0
@@ -204,6 +206,14 @@ class PixelEachSubstitutorL(LightningModuleBase):
                 plot_xyt(x[0], y[0], t[0], correct_pixels, task_id=task_id)
             else:
                 visualize_image_using_emoji(x[0], t[0], y[0], correct_pixels)
+                
+            self.test_results[task_id].append({
+                'inputs': x[0].tolist(),
+                'outputs': y_origin[0].tolist(),
+                'targets': t_origin[0].tolist(),
+                'corrects': correct_pixels[0].tolist(),
+                'hparams': {**self.model_kwargs, **self.params_for_each_trial[n]},
+            })
 
             print("Test {} | Correct: {} | Accuracy: {:>5.1f}% ({}/{})".format(
                 i+1, '🟩' if n_correct == n_pixels else '🟥', n_correct/n_pixels*100, n_correct, n_pixels, 
