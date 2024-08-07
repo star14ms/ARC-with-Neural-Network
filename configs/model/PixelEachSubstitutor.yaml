@@ -1,20 +1,20 @@
 name: "PixelEachSubstitutor"
 
 params:
-  max_width: 7
-  max_height: 7
-  out_dim: 49
-  d_reduced_V_list: [49, 1]
   pad_size: 1
-  pad_n_head: null
-  pad_dim_feedforward: 32
+  max_width: 3
+  max_height: 3
+  dims_reduced: [9]
+  dims_decoded: [1]
+  pad_class_initial: 0
   pad_num_layers: 1
+  pad_n_head: null
+  pad_dim_feedforward: 1
+  L_num_layers: 6
   L_n_head: null
   L_dim_feedforward: 1
-  L_num_layers: 6
+  C_num_layers: 1
   C_n_head: null
   C_dim_feedforward: 1
-  C_num_layers: 1
-  pad_value: 0
-  dropout: 0.0
+  dropout: 0.1
   num_classes: 10

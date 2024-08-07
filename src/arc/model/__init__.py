@@ -67,20 +67,20 @@ class FillerKeepInputIgnoreColorConfig:
 
 @dataclass
 class PixelEachSubstitutorConfig:
-    max_width: int = 7
-    max_height: int = 7
-    out_dim: int = 49
-    d_reduced_V_list: List[int] = (49, 1)
     pad_size: int = 1
+    max_width: int = 3
+    max_height: int = 3
+    dims_reduced: List[int] = (9,)
+    dims_decoded: List[int] = (1,)
+    pad_class_initial: int = 0
     pad_n_head: int | None = None
-    pad_dim_feedforward: int = 32
-    pad_num_layers: int = 6
+    pad_dim_feedforward: int = 1
+    pad_num_layers: int = 4
     L_n_head: int | None = None
     L_dim_feedforward: int = 1
     L_num_layers: int = 6
     C_n_head: int | None = None
     C_dim_feedforward: int = 1
     C_num_layers: int = 1
-    pad_value: int = 0
-    dropout: float = 0.0
+    dropout: float = 0.1
     num_classes: int = 10
