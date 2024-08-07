@@ -3,6 +3,7 @@ import torch
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TensorBoardLogger
 import os
+import json
 
 import warnings
 import hydra
@@ -78,6 +79,12 @@ def train(config: DictConfig, model=None, filter_funcs=None, test=False, return_
     save_path = os.path.join(save_dir, '{}.ckpt'.format(model.model.__class__.__name__))
     trainer.save_checkpoint(save_path)
     print('Model saved to:', save_path)
+    
+    # Save the submission to disk (optional)
+    save_path = os.path.join(save_dir, 'submission.json')
+    with open(save_path, 'w') as f: 
+        json.dump(model.submission, f)
+    print('Submission saved to:', save_path)
 
     if test:
         test_fn(config, model)

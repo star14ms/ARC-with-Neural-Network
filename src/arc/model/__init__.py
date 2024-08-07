@@ -85,7 +85,7 @@ class PixelEachSubstitutorConfig:
     dropout: float = 0.1
     num_classes: int = 10
 
-    max_trial: int = 1
+    n_trials: int = 1
     hyperparams_for_each_trial: List[dict] = tuple()
     max_epochs_for_each_task: int = 300
     train_loss_threshold_to_stop: float = 0.01
