@@ -20,6 +20,7 @@ class LightningModuleBase(pl.LightningModule):
         self.n_tasks_total_in_epoch = 0
         self.n_continuous_epoch_no_pixel_wrong = 0
         self.save_n_perfect_epoch = save_n_perfect_epoch
+        self.automatic_optimization = False
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
@@ -35,6 +36,8 @@ class LightningModuleBase(pl.LightningModule):
         return super().test_dataloader()
     
     def on_train_batch_end(self, out, batch, batch_idx):
+        if self.no_label:
+            return out
         self.n_pixels_correct_in_epoch += out['n_pixels_correct']
         self.n_pixels_total_in_epoch += out['n_pixels_total']
         self.n_tasks_correct_in_epoch += out['n_tasks_correct']
@@ -42,6 +45,8 @@ class LightningModuleBase(pl.LightningModule):
         return out
 
     def on_train_epoch_end(self):
+        if self.no_label:
+            return
         print('Epoch {} | Accuracy: {:>5.1f}% Tasks ({}/{}), {:>5.1f}% Pixels ({}/{})'.format(
             self.current_epoch+1, 
             self.n_tasks_correct_in_epoch / self.n_tasks_total_in_epoch * 100,
@@ -83,7 +88,7 @@ class PixelEachSubstitutorL(LightningModuleBase):
         self.model = model(*args, **kwargs)
         self.model_args = args
         self.model_kwargs = kwargs
-        self.loss_fn_source = nn.CrossEntropyLoss()
+        self.loss_fn = nn.CrossEntropyLoss()
 
         self.n_trials = n_trials
         self.params_for_each_trial = hyperparams_for_each_trial if hyperparams_for_each_trial else [{}]*n_trials
@@ -100,21 +105,23 @@ class PixelEachSubstitutorL(LightningModuleBase):
 
     def training_step(self, batches):
         batches_train, batches_test, task_id = batches
-        print('Task ID: [bold]{}[/bold]'.format(task_id))
+        print('Task ID: [bold white]{}[/bold white]'.format(task_id))
 
         progress_id = self.progress._add_task(self.n_trials, f'Trial 1/{self.n_trials}')
+        self.no_label = True if len(batches_test[0][1].shape) == 2 else False
 
         results = []
         for n in range(self.n_trials):
             info_train = self._training_step_train(batches_train, task_id, n)
             self.print_log('Train', **info_train)
 
-            info, outputs = self._training_step_test(batches_test, task_id, n)
-            self.print_log('Test', **info)
+            info, outputs = self._training_step_test(batches_test, task_id, n) if not self.no_label else self._test_step_test(batches_test, task_id, n)
+            if not self.no_label:
+                self.print_log('Test', **info)
 
             results.append({
-                'accuracy': info['n_tasks_correct'] / info['n_tasks_total'],
-                'loss': info['loss'],
+                'accuracy': info_train['n_tasks_correct'] / info_train['n_tasks_total'],
+                'loss': info_train['loss'],
                 'outputs': outputs,
             })
 
@@ -122,7 +129,7 @@ class PixelEachSubstitutorL(LightningModuleBase):
             self.progress._update(progress_id, n+1, description=f'Trial {n+1}/{self.n_trials}')
 
         self.progress.progress.remove_task(progress_id)
-        self.add_submission(task_id, info, results)
+        self.add_submission(task_id, results)
 
         return info
 
@@ -137,7 +144,6 @@ class PixelEachSubstitutorL(LightningModuleBase):
         self.model.to(batches_train[0][0].device)
         opt = torch.optim.Adam(self.parameters(), lr=self.lr)
 
-        # Find Pattern in Train Data
         for i in range(max_epochs_for_each_task):
             self.update_task_progress(progress_id, i, task_id, total_loss)
             total_loss = 0
@@ -146,9 +152,8 @@ class PixelEachSubstitutorL(LightningModuleBase):
             n_tasks_correct = 0
 
             for (x, t) in batches_train:
-                # forward + backward + optimize
                 y = self.model(x)
-                loss = self.loss_fn_source(y, t)
+                loss = self.loss_fn(y, t)
 
                 opt.zero_grad()
                 loss.backward()
@@ -157,7 +162,7 @@ class PixelEachSubstitutorL(LightningModuleBase):
                 total_loss += loss.item()
 
                 with torch.no_grad():
-                    y_origin = torch.argmax(y.detach().cpu(), dim=1).long() # [H, W]
+                    y_origin = torch.argmax(y.detach().cpu(), dim=1).long()
                     t_origin = torch.argmax(t.detach().cpu(), dim=1).long()
                     n_tasks_correct += sum(torch.all(y_one == t_one).item() for y_one, t_one in zip(y_origin, t_origin))
                     n_pixels_total += t_origin.numel()
@@ -184,14 +189,13 @@ class PixelEachSubstitutorL(LightningModuleBase):
         task_result = []
         outputs = []
 
-        # Process Test Data
         for i, (x, t) in enumerate(batches_test):
             y = self.model(x)
-            loss = self.loss_fn_source(y, t)
+            loss = self.loss_fn(y, t)
             total_loss += loss
 
             with torch.no_grad():
-                y_origin = torch.argmax(y.detach().cpu(), dim=1).long() # [H, W]
+                y_origin = torch.argmax(y.detach().cpu(), dim=1).long()
                 t_origin = torch.argmax(t.detach().cpu(), dim=1).long()
                 n_correct = (y_origin == t_origin).sum().int()
                 n_pixels = t_origin.numel()
@@ -230,6 +234,32 @@ class PixelEachSubstitutorL(LightningModuleBase):
             'n_tasks_total': len(batches_test),
         }, outputs
 
+    def _test_step_test(self, batches_test, task_id, n):
+        task_result = []
+        outputs = []
+
+        for x, _ in batches_test:
+            y = self.model(x)
+
+            with torch.no_grad():
+                y_origin = torch.argmax(y.detach().cpu(), dim=1).long()
+                outputs.append(y_origin[0])
+                
+            if is_notebook():
+                plot_xyt(x[0], y[0], task_id=task_id)
+            else:
+                visualize_image_using_emoji(x[0], y[0])
+
+            task_result.append({
+                'input': x[0].tolist(),
+                'output': y_origin[0].tolist(),
+                'hparams': {**self.model_kwargs, **self.params_for_each_trial[n]},
+            })
+
+        self.test_results[task_id].append(task_result)
+
+        return {}, outputs
+
     def on_train_start(self):
         self.progress = filter(lambda callback: hasattr(callback, 'progress'), self.trainer.callbacks).__next__()
 
@@ -254,17 +284,16 @@ class PixelEachSubstitutorL(LightningModuleBase):
             loss
         ), end=end)
 
-    def add_submission(self, task_id, info, results):
+    def add_submission(self, task_id, results):
         # choose top k outputs from all trials. Accuracy is the first priority, loss is the second.
         results = sorted(results, key=lambda x: (x['accuracy'], -x['loss']), reverse=True)
 
-        # I also want to get indices of the results to know which trial is the best before slicing
         results_with_idx = [(i, result) for i, result in enumerate(results)]
         results_with_idx = sorted(results_with_idx, key=lambda x: (x[1]['accuracy'], -x[1]['loss']), reverse=True)
         results = [result for _, result in results_with_idx]
         idxs_priority = [i for i, _ in results_with_idx]
 
-        submission_task = [{} for _ in range(info['n_tasks_total'])]
+        submission_task = [{} for _ in range(len(results[0]['outputs']))]
         for i, result in enumerate(results[:self.top_k_submission]):
             for j, output in enumerate(result['outputs']):
                 submission_task[j][f'attempt_{i+1}'] = output.tolist()

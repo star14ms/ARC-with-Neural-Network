@@ -2,13 +2,14 @@ import json
 import torch
 from torch.utils.data import Dataset, DataLoader
 from pytorch_lightning import LightningDataModule
+from lightning_fabric.utilities.data import suggested_max_num_workers
 from collections import OrderedDict
+from functools import partial
 
 from classify import get_filter_funcs
 from arc.preprocess import one_hot_encode, one_hot_encode_changes
 from arc.utils.transform import collate_fn_same_shape
-from lightning_fabric.utilities.data import suggested_max_num_workers
-from functools import partial
+from arc.constants import get_challenges_solutions_filepath
 
 
 class ARCDataset(Dataset):
@@ -76,7 +77,7 @@ class ARCDataset(Dataset):
         xs_test = [one_hot_encode(task_item, cold_value=self.cold_value) if self.one_hot else task_item for task_item in challenge['test']['input']]
 
         if self.solutions is None: 
-            ts_test = []
+            ts_test = [torch.zeros(1)] * len(xs_test)
         elif self.ignore_color:
             ts_test = [one_hot_encode_changes(task_item_in, task_item_out)[0] if self.one_hot else task_item_out for task_item_in, task_item_out in zip(challenge['test']['input'], solution)]
         else:
@@ -190,14 +191,24 @@ class ARCDataLoader(DataLoader):
 
 
 class ARCDataModule(LightningDataModule):
-    def __init__(self, base_path='./data/arc-prize-2024/', batch_size_max=1, shuffle=True, augment_data=False, filter_funcs=None, cold_value=-1, ignore_color=False, num_workers=None, local_world_size=1, debug=False):
+    def __init__(
+        self, 
+        base_path='./data/arc-prize-2024/', 
+        challenges_train='arc-agi_training_challenges.json', 
+        solutions_train='arc-agi_training_solutions.json', 
+        challenges_val='arc-agi_evaluation_challenges.json', 
+        solutions_val='arc-agi_evaluation_solutions.json', 
+        challenges_test='arc-agi_test_challenges.json',
+        batch_size_max=1, shuffle=True, augment_data=False, filter_funcs=None, cold_value=-1, ignore_color=False, 
+        num_workers=None, local_world_size=1, debug=False
+    ):
         super().__init__()
         self.base_path = base_path
-        self.challenges_train = self.base_path + 'arc-agi_training_challenges.json'
-        self.solutions_train = self.base_path + 'arc-agi_training_solutions.json'
-        self.challenges_val = self.base_path + 'arc-agi_evaluation_challenges.json'
-        self.solutions_val = self.base_path + 'arc-agi_evaluation_solutions.json'
-        self.challenges_test = base_path + 'arc-agi_test_challenges.json'
+        self.challenges_train = self.base_path + challenges_train
+        self.solutions_train = self.base_path + solutions_train if solutions_train else None
+        self.challenges_val = self.base_path + challenges_val
+        self.solutions_val = self.base_path + solutions_val if solutions_val else None
+        self.challenges_test = base_path + challenges_test
         self.solutions_test = None
 
         self.batch_size_max = batch_size_max
@@ -228,15 +239,15 @@ class ARCDataModule(LightningDataModule):
 
         # Assign test dataset for use in dataloader(s)
         if stage == 'test' or stage is None:
-            self.test_dataset = ARCDataset(self.challenges_test, self.solutions_test, **kwargs)
+            self.test_dataset = ARCDataset(self.challenges_test, self.solutions_test, filter_funcs=self.filter_funcs, **kwargs)
 
     def train_dataloader(self):
         collate_fn = partial(collate_fn_same_shape, batch_size_max=self.batch_size_max, shuffle=self.shuffle)
         return ARCDataLoader(self.train_dataset, batch_size=1, collate_fn=collate_fn, **self.kwargs_dataloader)
 
-    def val_dataloader(self):
-        collate_fn = partial(collate_fn_same_shape, batch_size_max=self.batch_size_max, shuffle=False)
-        return ARCDataLoader(self.val_dataset, batch_size=1, collate_fn=collate_fn, **self.kwargs_dataloader)
+    # def val_dataloader(self):
+    #     collate_fn = partial(collate_fn_same_shape, batch_size_max=self.batch_size_max, shuffle=False)
+    #     return ARCDataLoader(self.val_dataset, batch_size=1, collate_fn=collate_fn, **self.kwargs_dataloader)
 
     def test_dataloader(self):
         collate_fn = partial(collate_fn_same_shape, batch_size_max=1, shuffle=False)

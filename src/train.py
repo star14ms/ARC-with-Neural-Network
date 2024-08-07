@@ -22,12 +22,12 @@ from arc.model import (
     FillerKeepInputIgnoreColorConfig,
     PixelEachSubstitutorConfig,
 )
-from arc.utils.lightning_custom import RichProgressBarCustom
+from arc.utils.lightning_custom import TrainerCustom, RichProgressBarCustom
 from data import ARCDataModule
 from test import test as test_fn
 
 
-def train(config: DictConfig, model=None, filter_funcs=None, test=False, return_model=False):
+def train(config: DictConfig, model=None, filter_funcs=None, test=False, return_model=False, **kwargs_data):
     hparams_data = OmegaConf.to_container(config.data.params, resolve=True)
     hparams_model = OmegaConf.to_container(config.model.params, resolve=True)
     hparams_train = OmegaConf.to_container(config.train.params, resolve=True)
@@ -59,7 +59,7 @@ def train(config: DictConfig, model=None, filter_funcs=None, test=False, return_
         'seed': torch.seed(),
     })
 
-    trainer = Trainer(
+    trainer = TrainerCustom(
         max_epochs=max_epochs, 
         logger=logger, 
         log_every_n_steps=1, 
@@ -68,7 +68,7 @@ def train(config: DictConfig, model=None, filter_funcs=None, test=False, return_
             # ModelCheckpoint(every_n_epochs=50, save_top_k=3, monitor='epoch', mode='max')
         ]
     )
-    datamodule = ARCDataModule(local_world_size=trainer.num_devices, filter_funcs=filter_funcs, **hparams_data)
+    datamodule = ARCDataModule(local_world_size=trainer.num_devices, filter_funcs=filter_funcs, **hparams_data, **kwargs_data)
 
     # Train the model
     trainer.fit(model, datamodule=datamodule, ckpt_path=ckpt_path)

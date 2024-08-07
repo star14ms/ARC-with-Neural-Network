@@ -62,7 +62,7 @@ def _test(config, model, dataset_train, device, verbose_single):
             correct_ratio = (y_origin == t_origin).sum().float() / t_origin.numel()
             n_pixels_wrong = (y_origin != t_origin).sum().int()
 
-            print('Task: [bold]{}[/bold] | {:>5} {} | {:>6.2f}% correct | {} Pixels Wrong'.format(
+            print('Task: [bold white]{}[/bold white] | {:>5} {} | {:>6.2f}% correct | {} Pixels Wrong'.format(
                 key, 
                 'train' if j < len_train else 'test', 
                 j+1 if j < len_train else j-len_train+1, 

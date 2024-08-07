@@ -2,9 +2,21 @@ import pytorch_lightning as pl
 from pytorch_lightning.callbacks import RichProgressBar
 from pytorch_lightning.callbacks.progress.rich_progress import BatchesProcessedColumn, CustomBarColumn, CustomTimeColumn, ProcessingSpeedColumn, MetricsTextColumn
 from pytorch_lightning.utilities.types import STEP_OUTPUT
+from pytorch_lightning.trainer.trainer import Trainer, log
 
 from typing_extensions import override
-from typing import Any, Optional
+from typing import Any, Optional, Union
+
+from lightning_fabric.utilities.apply_func import convert_tensors_to_scalars
+from lightning_fabric.utilities.types import _PATH
+from pytorch_lightning.core.datamodule import LightningDataModule
+from pytorch_lightning.trainer.states import TrainerFn
+from pytorch_lightning.utilities.exceptions import MisconfigurationException
+from pytorch_lightning.utilities.types import (
+    _EVALUATE_OUTPUT,
+    _PREDICT_OUTPUT,
+    EVAL_DATALOADERS,
+)
 from rich.progress import TaskID, TextColumn
 from rich import print
 
@@ -90,3 +102,52 @@ class RichProgressBarCustom(RichProgressBar):
         items = super().get_metrics(trainer, model)
         items.pop("v_num", None)
         return items
+
+
+class TrainerCustom(Trainer):
+    def _test_impl(
+        self,
+        model: Optional["pl.LightningModule"] = None,
+        dataloaders: Optional[Union[EVAL_DATALOADERS, LightningDataModule]] = None,
+        ckpt_path: Optional[_PATH] = None,
+        verbose: bool = True,
+        datamodule: Optional[LightningDataModule] = None,
+    ) -> Optional[Union[_PREDICT_OUTPUT, _EVALUATE_OUTPUT]]:
+        # --------------------
+        # SETUP HOOK
+        # --------------------
+        log.debug(f"{self.__class__.__name__}: trainer test stage")
+
+        # if a datamodule comes in as the second arg, then fix it for the user
+        if isinstance(dataloaders, LightningDataModule):
+            datamodule = dataloaders
+            dataloaders = None
+        # If you supply a datamodule you can't supply test_dataloaders
+        if dataloaders is not None and datamodule:
+            raise MisconfigurationException("You cannot pass both `trainer.test(dataloaders=..., datamodule=...)`")
+
+        if model is None:
+            model = self.lightning_module
+            model_provided = False
+        else:
+            model_provided = True
+
+        self.test_loop.verbose = verbose
+
+        # links data to the trainer
+        self._data_connector.attach_data(model, train_dataloaders=datamodule.test_dataloader()) ### Customized
+        self.state.fn = TrainerFn.FITTING
+        self.training = True
+
+        assert self.state.fn is not None
+        ckpt_path = self._checkpoint_connector._select_ckpt_path(
+            self.state.fn, ckpt_path, model_provided=model_provided, model_connected=self.lightning_module is not None
+        )
+        results = self._run(model, ckpt_path=ckpt_path)
+        # remove the tensors from the test results
+        results = convert_tensors_to_scalars(results)
+
+        assert self.state.stopped
+        self.testing = False
+
+        return results
