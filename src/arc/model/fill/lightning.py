@@ -83,7 +83,7 @@ class FillerKeepInputL(LightningModuleBase):
                 # visualize_image_using_emoji(x[0], y[0], t[0])
 
             # if i == total-1: # and (y_origin != t).sum().int() == 0:
-            #     plot_xyt(x_origin.detach().cpu(), y_origin.detach().cpu(), t_origin.detach().cpu())
+            #     plot_xyt(x_origin, y_origin, t_origin)
 
             if i == total - 1:
                 break
@@ -131,7 +131,7 @@ class FillerKeepInputIgnoreColorL(LightningModuleBase):
                 # x_origin = torch.argmax(x[0].detach().cpu(), dim=0).long() # [H, W]
 
             # if i == total-8 and (y_origin != t.detach().cpu()).sum().int() == 0:
-            #     plot_xyt(x_origin.detach().cpu(), y_origin.detach().cpu(), t[0].detach().cpu())
+            #     plot_xyt(x_origin, y_origin, t[0])
 
             if i == total - 1:
                 break

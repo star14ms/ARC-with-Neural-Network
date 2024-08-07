@@ -3,6 +3,7 @@ from matplotlib import colors
 import os
 import torch
 
+from arc.utils.print import is_notebook
 from arc.constants import COLORS
 
 
@@ -72,30 +73,25 @@ def plot_single_image(matrix, ax, title, cmap, norm):
     ax.set_title(title, fontweight='bold')
 
 
-def plot_xyt(input_tensor, predicted_tensor, answer_tensor=None, idx=0):
+def plot_xyt(*images, task_id, titles=('Input', 'Predicted', 'Answer', 'Correct')):
     """Plots the input, predicted, and answer pairs of a specified task, using the ARC color scheme."""
-    num_img = 3
+    num_img = len(images)
+    
+    if num_img > 2:
+        images = images[:1] + (images[2], images[1]) + (images[3:] if len(images) > 3 else tuple())
+        titles = titles[:1] + (titles[2], titles[1]) + (titles[3:] if len(titles) > 3 else tuple())
+    
     fig, axs = plt.subplots(1, num_img, figsize=(9, num_img))
-    plt.suptitle(f'Task {idx}', fontsize=20, fontweight='bold', y=0.96)
+    plt.suptitle(f'Task {task_id}', fontsize=20, fontweight='bold', y=0.96)
     
     cmap = colors.ListedColormap(COLORS)
     norm = colors.Normalize(vmin=0, vmax=9)
     
-    input_tensor = input_tensor.detach().cpu().squeeze(0)
-    predicted_tensor = predicted_tensor.detach().cpu().squeeze(0)
-    answer_tensor = answer_tensor.detach().cpu().squeeze(0) if answer_tensor is not None else None
-    
-    if len(input_tensor.shape) == 3:
-        input_tensor = torch.argmax(input_tensor, dim=0).long()
-    if len(predicted_tensor.shape) == 3:
-        predicted_tensor = torch.argmax(predicted_tensor, dim=0).long()
-    if answer_tensor is not None and len(answer_tensor.shape) == 3:
-        answer_tensor = torch.argmax(answer_tensor, dim=0).long()
+    images = [image.detach().cpu().squeeze(0).long() for image in images if image is not None]
+    images = [torch.argmax(image, dim=0) if len(image.shape) > 2 else image for image in images]
 
-    plot_single_image(input_tensor, axs[0], 'Input', cmap, norm)
-    plot_single_image(predicted_tensor, axs[1], 'Predicted', cmap, norm)
-    if answer_tensor is not None:
-        plot_single_image(answer_tensor, axs[2], 'Answer', cmap, norm)
+    for i in range(num_img):
+        plot_single_image(images[i], axs[i], titles[i], cmap, norm)
     
     fig.patch.set_linewidth(5)
     fig.patch.set_edgecolor('black')
@@ -105,23 +101,19 @@ def plot_xyt(input_tensor, predicted_tensor, answer_tensor=None, idx=0):
     plt.show()
 
 
-def plot_xyts(task_result, title_prefix="Task"):
+def plot_xyts(task_result, title_prefix="Task", subtitles=('Inputs', 'Predictions', 'Answers', 'Corrects')):
     """Plots rows of input, predicted, and answer triples for a set of tasks, using the ARC color scheme."""
     num_pairs = len(task_result)
-    num_columns = 3
+    num_columns = len(task_result[0])
+    
+    if num_columns > 2:
+        task_result = [task[:1] + (task[2], task[1]) + (task[3:] if len(task) > 3 else tuple()) for task in task_result]
+        subtitles = subtitles[:1] + (subtitles[2], subtitles[1]) + (subtitles[3:] if len(subtitles) > 3 else tuple())
+
     fig, axs = plt.subplots(num_columns, num_pairs, figsize=(num_columns*6, 10))
     
-    task_result = [(
-        x.detach().cpu().squeeze(0).long(),
-        y.detach().cpu().squeeze(0).long(),
-        t.detach().cpu().squeeze(0).long(),
-    ) for x, y, t in task_result]
-
-    task_result = [(
-        torch.argmax(x, dim=0).long() if len(x.shape) > 2 else x, 
-        torch.argmax(y, dim=0).long() if len(y.shape) > 2 else y,
-        torch.argmax(t, dim=0).long() if len(t.shape) > 2 else t,
-    ) for x, y, t in task_result]
+    task_result = [tuple(image.detach().cpu().squeeze(0).long() for image in images) for images in task_result]
+    task_result = [tuple(torch.argmax(image, dim=0) if len(image.shape) > 2 else image for image in images) for images in task_result]
 
     # If there's only one task, axs may not be a 2D array
     if num_pairs == 1:
@@ -131,10 +123,8 @@ def plot_xyts(task_result, title_prefix="Task"):
     norm = colors.Normalize(vmin=0, vmax=9)
     
     for i in range(num_pairs):
-        plot_single_image(task_result[i][0], axs[0][i], f'{title_prefix} Inputs' if i == 0 else '', cmap, norm)
-        plot_single_image(task_result[i][1], axs[1][i], f'{title_prefix} Predictions' if i == 0 else '', cmap, norm)
-        if isinstance(task_result[i][2], type(task_result[i][0])):
-            plot_single_image(task_result[i][2], axs[2][i], f'{title_prefix} Answers' if i == 0 else '', cmap, norm)
+        for j in range(num_columns):
+            plot_single_image(task_result[i][j], axs[j][i], f'{title_prefix} {subtitles[j]}' if i == 0 else '', cmap, norm)
     
     fig.patch.set_linewidth(5)
     fig.patch.set_edgecolor('black')
@@ -222,11 +212,13 @@ def visualize_image_using_emoji(*images):
     '''
     ⬛️ = 0, 🟦 = 1, 🟥 = 2, 🟩 = 3, 🟨 = 4, ⬜️ = 5, 🟪 = 6, 🟧 = 7, ⏹️ = 8, 🟫 = 9
     '''
+    
     images = [image.squeeze(0).detach().cpu() for image in images]
     images = [torch.argmax(image, dim=0).long() if len(image.shape) > 2 else image for image in images]
-    
+    is_ipython = is_notebook()
+
+    line = ''
     for h in range(max(images, key=lambda x: x.shape[0]).shape[0]):
-        line = ''
         for image in images:
             if h >= image.shape[0]:
                 line += image.shape[1] * '  ' + '  '
@@ -250,10 +242,11 @@ def visualize_image_using_emoji(*images):
                 elif pixel_key == 7:
                     line += '🟧'
                 elif pixel_key == 8:
-                    line += '⏹️ '
+                    line += '⏹️' if is_ipython else '⏹️ '
                 elif pixel_key == 9:
                     line += '🟫'
                 else:
                     line += '◽️'
             line += '  '
-        print(line)
+        line += '\n'
+    print(line)

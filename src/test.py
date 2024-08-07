@@ -62,7 +62,7 @@ def _test(config, model, dataset_train, device, verbose_single):
             correct_ratio = (y_origin == t_origin).sum().float() / t_origin.numel()
             n_pixels_wrong = (y_origin != t_origin).sum().int()
 
-            print('Task: {} | {:>5} {} | {:>6.2f}% correct | {} Pixels Wrong'.format(
+            print('Task: [bold]{}[/bold] | {:>5} {} | {:>6.2f}% correct | {} Pixels Wrong'.format(
                 key, 
                 'train' if j < len_train else 'test', 
                 j+1 if j < len_train else j-len_train+1, 
@@ -71,13 +71,16 @@ def _test(config, model, dataset_train, device, verbose_single):
             ))
             
             # visualize
+            correct_pixels = torch.where(y_origin == t_origin, 3, 2)
+
             if verbose_single:
-                plot_xyt(x_origin, y_origin, t_origin)
+                plot_xyt(x_origin, y_origin, t_origin, correct_pixels, task_id=key)
             else:
-                task_result.append((x_origin, y_origin, t_origin))
+                task_result.append((x_origin, y_origin, t_origin, correct_pixels))
 
         if not verbose_single:
             plot_xyts(task_result, title_prefix=key)
+        print()
 
 
 def test(config, filter_funcs=None, model=None):
@@ -89,6 +92,8 @@ def test(config, filter_funcs=None, model=None):
         hparmas_test.get('model_path', None), \
         hparmas_test.get('augment_data', None), \
         hparmas_test.get('verbose_single', None)
+    if filter_funcs:
+        hparams_data['filter_funcs'] = filter_funcs
 
     if model is None or isinstance(model, type):
         model_class = get_model_class(config.model.name if model is None else model.__name__)
@@ -107,7 +112,7 @@ def test(config, filter_funcs=None, model=None):
 
     # Reading files
     challenges, solutions = get_challenges_solutions_filepath(data_category='train', base_path=base_path)
-    dataset = ARCDataset(challenges, solutions, augment_data=augment_data, filter_funcs=filter_funcs, **hparams_data)
+    dataset = ARCDataset(challenges, solutions, augment_data=augment_data, **hparams_data)
     torch.set_printoptions(sci_mode=False, precision=1)
 
     with torch.no_grad():

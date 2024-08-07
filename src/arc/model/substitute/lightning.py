@@ -5,7 +5,8 @@ import torch.nn.functional as F
 from rich import print
 
 from arc.model.substitute.pixel_each import PixelEachSubstitutor
-from arc.utils.visualize import visualize_image_using_emoji
+from arc.utils.visualize import visualize_image_using_emoji, plot_xyt
+from arc.utils.print import is_notebook
 
 
 class LightningModuleBase(pl.LightningModule):
@@ -88,7 +89,7 @@ class PixelEachSubstitutorL(LightningModuleBase):
 
     def training_step(self, batches):
         batches_train, batches_test, task_id = batches
-        print('Task ID:', task_id)
+        print('Task ID: [bold]{}[/bold]'.format(task_id))
 
         self.model = PixelEachSubstitutor()
         self.model.to(batches_train[0][0].device)
@@ -159,10 +160,14 @@ class PixelEachSubstitutorL(LightningModuleBase):
                 n_pixels_total += n_pixels
                 n_tasks_correct += n_correct == n_pixels
                 n_pixels_correct += n_correct
+                
+            correct_pixels = torch.where(y_origin == t_origin, 3, 2)
+            if is_notebook():
+                plot_xyt(x[0], y[0], t[0], correct_pixels, task_id=task_id)
+            else:
+                visualize_image_using_emoji(x[0], t[0], y[0], correct_pixels)
+                print('Input | Target | Prediction | Correct')
 
-            visualize_image_using_emoji(x[0], t[0], y[0], torch.where(y_origin == t_origin, 3, 2))
-
-            print('Input | Target | Prediction | Correct')
             print("Test {} | Correct: {} | Accuracy: {:>5.1f}% ({}/{})".format(
                 i+1, '🟩' if n_correct == n_pixels else '🟥', n_correct/n_pixels*100, n_correct, n_pixels, 
             ))
@@ -180,16 +185,16 @@ class PixelEachSubstitutorL(LightningModuleBase):
     def on_train_start(self):
         self.progress = filter(lambda callback: hasattr(callback, 'progress'), self.trainer.callbacks).__next__()
 
-    def update_progress(self, progress_id, i, max_epochs, task_id, total_loss_train):
-        self.progress._update(progress_id, i+1, description=f'Epoch {i+1}/{max_epochs}')
+    def update_progress(self, progress_id, i, task_id, total_loss_train):
+        self.progress._update(progress_id, i+1, description=f'Epoch {i+1}/{self.max_epochs_for_each_task}')
         self.trainer.progress_bar_metrics['Task ID'] = task_id
         self.trainer.progress_bar_metrics['Train Loss'] = '{:.4f}'.format(total_loss_train)
         self.progress._update_metrics(self.trainer, self)
         self.progress.refresh()
 
     @staticmethod
-    def print_log(mode, n_tasks_correct, n_tasks_total, n_pixels_correct, n_pixels_total, total_loss):
-        print('{} Accuracy: {:>5.1f}% Tasks ({}/{}), {:>5.1f}% Pixels ({}/{}) | {} loss {:.4f}\n'.format(
+    def print_log(mode, n_tasks_correct, n_tasks_total, n_pixels_correct, n_pixels_total, total_loss, end='\n'):
+        print('{} Accuracy: {:>5.1f}% Tasks ({}/{}), {:>5.1f}% Pixels ({}/{}) | {} loss {:.4f}'.format(
             mode,
             n_tasks_correct / n_tasks_total * 100,
             n_tasks_correct,
@@ -199,4 +204,4 @@ class PixelEachSubstitutorL(LightningModuleBase):
             n_pixels_total,
             mode,
             total_loss
-        ))
+        ), end=end)
