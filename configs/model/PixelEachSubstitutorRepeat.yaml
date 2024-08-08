@@ -1,0 +1,27 @@
+name: "PixelEachSubstitutorRepeat"
+
+params:
+  pad_size: 1
+  max_width: 3
+  max_height: 3
+  dims_reduced: [9]
+  dims_decoded: [1]
+  pad_class_initial: 0
+  pad_num_layers: 1
+  pad_n_head: null
+  pad_dim_feedforward: 1
+  L_num_layers: 6
+  L_n_head: null
+  L_dim_feedforward: 1
+  C_num_layers: 1
+  C_n_head: null
+  C_dim_feedforward: 1
+  dropout: 0.1
+  num_classes: 10
+
+  n_trials: 1
+  hyperparams_for_each_trial: []
+  max_epochs_for_each_task: 5
+  train_loss_threshold_to_stop: 0.01
+
+  max_recurrent_depth: 200

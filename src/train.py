@@ -21,6 +21,7 @@ from arc.model import (
     FillerKeepInputConfig,
     FillerKeepInputIgnoreColorConfig,
     PixelEachSubstitutorConfig,
+    PixelEachSubstitutorRepeatConfig,
 )
 from arc.utils.lightning_custom import TrainerCustom, RichProgressBarCustom
 from data import ARCDataModule
@@ -103,10 +104,10 @@ cs = ConfigStore.instance()
 cs.store(group="data", name="base_data", node=DataConfig, package="data")
 cs.store(group="train", name="base_train", node=TrainConfig, package="train")
 cs.store(group="test", name="base_test", node=TestConfig, package="test")
-cs.store(group="model", name="base_FillerKeepInput", node=FillerKeepInputConfig, package="model")
-cs.store(group="model", name="base_FillerKeepInputIgnoreColor", node=FillerKeepInputIgnoreColorConfig, package="model")
-cs.store(group="model", name="base_PixelEachSubstitutor", node=PixelEachSubstitutorConfig, package="model")
-
+cs.store(group="model", name="base_model_FillerKeepInput", node=FillerKeepInputConfig, package="model")
+cs.store(group="model", name="base_model_FillerKeepInputIgnoreColor", node=FillerKeepInputIgnoreColorConfig, package="model")
+cs.store(group="model", name="base_model_PixelEachSubstitutor", node=PixelEachSubstitutorConfig, package="model")
+cs.store(group="model", name="base_model_PixelEachSubstitutorRepeat", node=PixelEachSubstitutorRepeatConfig, package="model")
 
 @hydra.main(config_path=os.path.join('..', "configs"), config_name="train", version_base=None)
 def main(config: DictConfig) -> None:

@@ -42,9 +42,11 @@ class RichProgressBarCustom(RichProgressBar):
     def on_train_start(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
         super().on_train_start(trainer, pl_module)
         max_epochs = self._trainer.max_epochs
-        self.train_progress_bar0_id = self.progress.add_task(description=f'Epoch 1/{max_epochs}', total=max_epochs)
+        
+        if max_epochs != 1:
+            self.train_progress_bar0_id = self.progress.add_task(description=f'Epoch 1/{max_epochs}', total=max_epochs)
 
-    def _update(self, progress_bar_id: Optional["TaskID"], current: int, visible: bool = True, description: str = None) -> None:
+    def _update(self, progress_bar_id: Optional["TaskID"], current: int, visible: bool = True, description: str | None = None) -> None:
         if self.progress is not None and self.is_enabled:
             assert progress_bar_id is not None
             task = filter(lambda task: task.id == progress_bar_id, self.progress.tasks).__next__()
@@ -77,12 +79,13 @@ class RichProgressBarCustom(RichProgressBar):
 
     @override
     def on_train_epoch_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
-        current_epoch = self._trainer.current_epoch
-        max_epochs = self._trainer.max_epochs
-        new_description = 'Epoch {}/{}'.format(current_epoch+1, max_epochs)
-        self.progress.update(self.train_progress_bar0_id, advance=1, description=new_description)
-        self._update_metrics(trainer, pl_module)
-        self.refresh()
+        if self._trainer.max_epochs != 1:
+            current_epoch = self._trainer.current_epoch
+            max_epochs = self._trainer.max_epochs
+            new_description = 'Epoch {}/{}'.format(current_epoch+1, max_epochs)
+            self.progress.update(self.train_progress_bar0_id, advance=1, description=new_description)
+            self._update_metrics(trainer, pl_module)
+            self.refresh()
 
     def configure_columns(self, trainer: "pl.Trainer") -> list:
         return [

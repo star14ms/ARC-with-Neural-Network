@@ -10,12 +10,14 @@ def get_model_class(model_name: str):
     )
     from arc.model.substitute.lightning import (
         PixelEachSubstitutorL,
+        PixelEachSubstitutorRepeatL,
     )
 
     model_classes = [
         FillerKeepInputL,
         FillerKeepInputIgnoreColorL,
         PixelEachSubstitutorL,
+        PixelEachSubstitutorRepeatL,
     ]
 
     for model_class in model_classes:
@@ -89,3 +91,7 @@ class PixelEachSubstitutorConfig:
     hyperparams_for_each_trial: List[dict] = tuple()
     max_epochs_for_each_task: int = 300
     train_loss_threshold_to_stop: float = 0.01
+
+@dataclass
+class PixelEachSubstitutorRepeatConfig(PixelEachSubstitutorConfig):
+    max_recurrences = 200

@@ -2,7 +2,7 @@ import torch
 from arc.constants import COLORS
 
 
-def one_hot_encode(matrix, num_classes=len(COLORS), cold_value=0, last_dim_ones=False):
+def one_hot_encode(matrix, num_classes=len(COLORS), cold_value=0, last_dim_ones=False, device=None):
     # Ensure the input is a tensor
     if not isinstance(matrix, torch.Tensor):
         matrix = torch.tensor(matrix)
@@ -12,13 +12,13 @@ def one_hot_encode(matrix, num_classes=len(COLORS), cold_value=0, last_dim_ones=
     
     # Create a one-hot encoded tensor with shape [num_classes, H, W]
     if cold_value == 0:
-        one_hot_matrix = torch.zeros(num_classes, H, W)
+        one_hot_matrix = torch.zeros(num_classes, H, W, device=device)
     else:
-        one_hot_matrix = torch.full([num_classes, H, W], cold_value, dtype=torch.float32)
+        one_hot_matrix = torch.full([num_classes, H, W], cold_value, dtype=torch.float32, device=device)
     
     # Use scatter_ to fill in the one-hot encoded tensor
     one_hot_matrix.scatter_(0, matrix.unsqueeze(0), 1)
-    
+
     # Last dim filled with ones
     if last_dim_ones:
         one_hot_matrix = torch.cat([one_hot_matrix, torch.ones(1, H, W)], dim=0)
