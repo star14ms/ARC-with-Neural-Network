@@ -178,3 +178,6 @@ output/task_visualization/*
 
 # Sub Repository
 arc-dsl/
+
+# For MAC
+.DS_Store
