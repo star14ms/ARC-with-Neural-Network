@@ -2,8 +2,9 @@ import pytorch_lightning as pl
 import torch
 from torch import nn
 import torch.nn.functional as F
-from rich import print
 from collections import defaultdict
+import os
+from rich import print
 
 from arc.model.substitute.pixel_each import PixelEachSubstitutor
 from arc.utils.visualize import visualize_image_using_emoji, plot_xyt
@@ -36,6 +37,10 @@ class LightningModuleBase(pl.LightningModule):
         return super().test_dataloader()
     
     def on_train_batch_end(self, out, batch, batch_idx):
+        if is_notebook():
+            train_description = "Task {}/{}".format(batch_idx + 1, self._trainer.fit_loop.max_batches)
+            os.system(f'echo \"{train_description}\"')
+
         if self.no_label:
             return out
         self.n_pixels_correct_in_epoch += out['n_pixels_correct']
