@@ -13,13 +13,15 @@ from arc.utils.print import is_notebook
 
 
 class LightningModuleBase(pl.LightningModule):
-    def __init__(self, lr=0.001, save_n_perfect_epoch=4, *args, **kwargs):
+    def __init__(self, lr=0.001, save_n_perfect_epoch=4, top_k_submission=2, *args, **kwargs):
         super().__init__()
         self.lr = lr
         self.save_n_perfect_epoch = save_n_perfect_epoch
+        self.top_k_submission = top_k_submission
 
-        self.n_pixels_correct_in_epoch = 0
-        self.n_pixels_total_in_epoch = 0
+        self.submission = {}
+        self.test_results = defaultdict(list)
+
         self.n_tasks_correct_in_epoch = 0
         self.n_tasks_total_in_epoch = 0
         self.n_continuous_epoch_no_pixel_wrong = 0
@@ -51,8 +53,6 @@ class LightningModuleBase(pl.LightningModule):
 
         if self.no_label:
             return out
-        self.n_pixels_correct_in_epoch += out['n_pixels_correct']
-        self.n_pixels_total_in_epoch += out['n_pixels_total']
         self.n_tasks_correct_in_epoch += out['n_tasks_correct']
         self.n_tasks_total_in_epoch += out['n_tasks_total']
         return out
@@ -60,14 +60,11 @@ class LightningModuleBase(pl.LightningModule):
     def on_train_epoch_end(self):
         if self.no_label:
             return
-        print('Epoch {} | Accuracy: {:>5.1f}% Tasks ({}/{}), {:>5.1f}% Pixels ({}/{})'.format(
+        print('Epoch {} | Accuracy: {:>5.1f}% Tasks ({}/{})'.format(
             self.current_epoch+1, 
             self.n_tasks_correct_in_epoch / self.n_tasks_total_in_epoch * 100,
             self.n_tasks_correct_in_epoch,
             self.n_tasks_total_in_epoch,
-            self.n_pixels_correct_in_epoch / self.n_pixels_total_in_epoch * 100, 
-            self.n_pixels_correct_in_epoch,
-            self.n_pixels_total_in_epoch
         ))
         
         current_epoch = self.trainer.current_epoch
@@ -76,7 +73,7 @@ class LightningModuleBase(pl.LightningModule):
         if current_epoch+1 == max_epochs:
             self.progress.progress.stop()
 
-        if self.n_pixels_correct_in_epoch == 0:
+        if self.n_tasks_correct_in_epoch == self.n_tasks_total_in_epoch:
             self.n_continuous_epoch_no_pixel_wrong += 1
         else:
             self.n_continuous_epoch_no_pixel_wrong = 0
@@ -87,8 +84,6 @@ class LightningModuleBase(pl.LightningModule):
             print(f"Model saved to: {save_path}")
 
         # free up the memory
-        self.n_pixels_correct_in_epoch = 0
-        self.n_pixels_total_in_epoch = 0
         self.n_tasks_correct_in_epoch = 0
         self.n_tasks_total_in_epoch = 0
 
@@ -103,15 +98,12 @@ class LightningModuleBase(pl.LightningModule):
         self.progress.refresh()
 
     @staticmethod
-    def print_log(mode, n_tasks_correct, n_tasks_total, n_pixels_correct, n_pixels_total, loss, end='\n'):
-        print('{} Accuracy: {:>5.1f}% Tasks ({}/{}), {:>5.1f}% Pixels ({}/{}) | {} loss {:.4f}'.format(
+    def print_log(mode, n_tasks_correct, n_tasks_total, loss, end='\n'):
+        print('{} Accuracy: {:>5.1f}% Tasks ({}/{}) | {} loss {:.4f}'.format(
             mode,
             n_tasks_correct / n_tasks_total * 100,
             n_tasks_correct,
             n_tasks_total,
-            n_pixels_correct / n_pixels_total * 100, 
-            n_pixels_correct,
-            n_pixels_total,
             mode,
             loss
         ), end=end)
@@ -138,7 +130,7 @@ class LightningModuleBase(pl.LightningModule):
 
 
 class PixelEachSubstitutorL(LightningModuleBase):
-    def __init__(self, lr=0.001, model=None, n_trials=5, hyperparams_for_each_trial=[], max_epochs_for_each_task=300, train_loss_threshold_to_stop=0.01, top_k_submission=2, *args, **kwargs):
+    def __init__(self, lr=0.001, model=None, n_trials=5, hyperparams_for_each_trial=[], max_epochs_for_each_task=300, train_loss_threshold_to_stop=0.01, *args, **kwargs):
         super().__init__(lr, *args, **kwargs)
 
         model = model if model is not None else PixelEachSubstitutor
@@ -152,15 +144,11 @@ class PixelEachSubstitutorL(LightningModuleBase):
         self.max_epochs_for_each_task = max_epochs_for_each_task
         self.train_loss_threshold_to_stop = train_loss_threshold_to_stop
 
-        self.submission = {}
-        self.top_k_submission = top_k_submission
-        self.test_results = defaultdict(list)
-
     def training_step(self, batches):
         batches_train, batches_test, task_id = batches
         print('Task ID: [bold white]{}[/bold white]'.format(task_id))
 
-        progress_id = self.progress._add_task(self.n_trials, f'Trial 1/{self.n_trials}')
+        id_prog_trial = self.progress._add_task(self.n_trials, f'Trial 0/{self.n_trials}')
         self.no_label = True if len(batches_test[0][1].shape) == 2 else False
 
         results = []
@@ -179,19 +167,26 @@ class PixelEachSubstitutorL(LightningModuleBase):
             })
 
             print(f"Trial {n+1}/{self.n_trials} | Restarting the training\n")
-            self.progress._update(progress_id, n+1, description=f'Trial {n+1}/{self.n_trials}')
+            self.progress._update(id_prog_trial, n+1, description=f'Trial {n+1}/{self.n_trials}')
 
-        self.progress.progress.remove_task(progress_id)
+        self.progress.progress.remove_task(id_prog_trial)
         self.add_submission(task_id, results)
 
-        return info
+        n_tasks_correct = 0
+        for trials in self.test_results[task_id]:
+            n_tasks_correct += any(all(all(pixel == 3 for pixel in row) for row in trial['correct_pixels']) for trial in trials)
+
+        return {
+            'n_tasks_correct': n_tasks_correct,
+            'n_tasks_total': len(batches_test),
+        }
 
     def _training_step_train(self, batches_train, task_id, n):
         max_epochs_for_each_task = self.max_epochs_for_each_task
         n_tasks_total = sum([len(b[0]) for b in batches_train])
         
         total_loss = 0
-        progress_id = self.progress._add_task(max_epochs_for_each_task, f'Epoch 1/{max_epochs_for_each_task}')
+        progress_id = self.progress._add_task(max_epochs_for_each_task, f'Epoch 0/{max_epochs_for_each_task}')
         
         self.model.__init__(*self.model_args, **{**self.model_kwargs, **self.params_for_each_trial[n]})
         self.model.to(batches_train[0][0].device)
@@ -200,8 +195,6 @@ class PixelEachSubstitutorL(LightningModuleBase):
         for i in range(max_epochs_for_each_task):
             self.update_task_progress(progress_id, i, self.max_epochs_for_each_task, task_id, total_loss)
             total_loss = 0
-            self.n_pixels_correct = 0
-            self.n_pixels_total = 0
             self.n_tasks_correct = 0
 
             for (x, t) in batches_train:
@@ -222,16 +215,12 @@ class PixelEachSubstitutorL(LightningModuleBase):
 
         return {
             'loss': total_loss,
-            'n_pixels_correct': self.n_pixels_correct,
-            'n_pixels_total': self.n_pixels_total,
             'n_tasks_correct': self.n_tasks_correct,
             'n_tasks_total': n_tasks_total,
         }
 
     def _training_step_test(self, batches_test, task_id, n):
         total_loss = 0
-        self.n_pixels_correct = 0
-        self.n_pixels_total = 0
         self.n_tasks_correct = 0
         task_result = []
         outputs = []
@@ -241,10 +230,10 @@ class PixelEachSubstitutorL(LightningModuleBase):
             loss = self.loss_fn(y, t)
             total_loss += loss
 
-            y_origin, t_origin, n_correct, n_pixels = self.update_prediction_info(y, t)
-            outputs.append(y_origin[0])
+            y_decoded, t_decoded, n_correct, n_pixels = self.update_prediction_info(y, t)
+            outputs.append(y_decoded[0])
 
-            correct_pixels = torch.where(y_origin == t_origin, 3, 2)
+            correct_pixels = torch.where(y_decoded == t_decoded, 3, 2)
             if self.is_notebook:
                 plot_xyt(x[0], y[0], t[0], correct_pixels, task_id=task_id)
             else:
@@ -252,8 +241,8 @@ class PixelEachSubstitutorL(LightningModuleBase):
 
             task_result.append({
                 'input': x[0].tolist(),
-                'output': y_origin[0].tolist(),
-                'target': t_origin[0].tolist(),
+                'output': y_decoded[0].tolist(),
+                'target': t_decoded[0].tolist(),
                 'correct_pixels': correct_pixels[0].tolist(),
                 'hparams': {**self.model_kwargs, **self.params_for_each_trial[n]},
             })
@@ -266,8 +255,6 @@ class PixelEachSubstitutorL(LightningModuleBase):
 
         return {
             'loss': total_loss, 
-            'n_pixels_correct': self.n_pixels_correct, 
-            'n_pixels_total': self.n_pixels_total, 
             'n_tasks_correct': self.n_tasks_correct, 
             'n_tasks_total': len(batches_test),
         }, outputs
@@ -280,8 +267,8 @@ class PixelEachSubstitutorL(LightningModuleBase):
             y = self.model(x)
 
             with torch.no_grad():
-                y_origin = torch.argmax(y.detach().cpu(), dim=1).long()
-                outputs.append(y_origin[0])
+                y_decoded = torch.argmax(y.detach().cpu(), dim=1).long()
+                outputs.append(y_decoded[0])
 
             if self.is_notebook:
                 plot_xyt(x[0], y[0], task_id=task_id)
@@ -290,7 +277,7 @@ class PixelEachSubstitutorL(LightningModuleBase):
 
             task_result.append({
                 'input': x[0].tolist(),
-                'output': y_origin[0].tolist(),
+                'output': y_decoded[0].tolist(),
                 'hparams': {**self.model_kwargs, **self.params_for_each_trial[n]},
             })
 
@@ -300,17 +287,15 @@ class PixelEachSubstitutorL(LightningModuleBase):
 
     @torch.no_grad()
     def update_prediction_info(self, y, t):
-        y_origin = torch.argmax(y.detach().cpu(), dim=1).long()
-        t_origin = torch.argmax(t.detach().cpu(), dim=1).long()
+        y_decoded = torch.argmax(y.detach().cpu(), dim=1).long()
+        t_decoded = torch.argmax(t.detach().cpu(), dim=1).long()
         
-        n_correct = (y_origin == t_origin).sum().int()
-        n_pixels = t_origin.numel()
+        n_correct = (y_decoded == t_decoded).sum().int()
+        n_pixels = t_decoded.numel()
 
-        self.n_tasks_correct += sum(torch.all(y_one == t_one).item() for y_one, t_one in zip(y_origin, t_origin))
-        self.n_pixels_correct += n_correct
-        self.n_pixels_total += n_pixels
+        self.n_tasks_correct += sum(torch.all(y_one == t_one).item() for y_one, t_one in zip(y_decoded, t_decoded))
 
-        return y_origin, t_origin, n_correct, n_pixels
+        return y_decoded, t_decoded, n_correct, n_pixels
 
 
 class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
@@ -425,12 +410,14 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
                         y[j:j+1] = one_hot_encode(y_next_one, device=y.device)
 
             total_loss += loss
-            self.progress.progress.remove_task(id_prog_r)
 
-            y_origin, t_origin, n_correct, n_pixels = self.update_prediction_info(y, t)
-            outputs.append(y_origin[0])
+            y_decoded = torch.argmax(y, dim=1).long()
+            t_decoded = torch.argmax(t, dim=1).long()
 
-            correct_pixels = torch.where(y_origin == t_origin, 3, 2)
+            y_decoded, t_decoded, n_correct, n_pixels = self.update_prediction_info(y, t)
+            outputs.append(y_decoded[0])
+
+            correct_pixels = torch.where(y_decoded == t_decoded, 3, 2)
             if self.is_notebook:
                 plot_xyt(x[0], y[0], t[0], correct_pixels, task_id=task_id)
             else:
@@ -438,8 +425,8 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
 
             task_result.append({
                 'input': x[0].tolist(),
-                'output': y_origin[0].tolist(),
-                'target': t_origin[0].tolist(),
+                'output': y_decoded[0].tolist(),
+                'target': t_decoded[0].tolist(),
                 'correct_pixels': correct_pixels[0].tolist(),
                 'hparams': {**self.model_kwargs, **self.params_for_each_trial[n]},
             })
@@ -452,8 +439,6 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
 
         return {
             'loss': total_loss, 
-            'n_pixels_correct': self.n_pixels_correct, 
-            'n_pixels_total': self.n_pixels_total, 
             'n_tasks_correct': self.n_tasks_correct, 
             'n_tasks_total': len(batches_test),
         }, outputs
