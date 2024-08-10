@@ -8,6 +8,8 @@ from rich import print
 from arc.utils.print import is_notebook
 from arc.constants import COLORS
 
+import warnings
+
 
 def plot_task(dataset, idx, data_category, fdir_to_save=None):
     """Plots the train and test pairs of a specified task, using the ARC color scheme."""
@@ -136,37 +138,38 @@ def plot_xyts(task_result, title_prefix="Task", subtitles=('Inputs', 'Outputs', 
     plt.show()
 
 
-def plot_xyt_from_json(file_path='./output/test_results.json', titles=('Input', 'Output', 'Answer', 'Correct'), plot_only_correct=False, top_k=2):
+def plot_xyt_from_json(file_path='./output/test_results.json', titles=('Input', 'Output', 'Answer', 'Correct'), plot_only_correct=False, top_k=2, total=400, verbose=False):
     results = json.load(open(file_path, 'r'))
 
     exist_label_information = list(results.values())[0][0][0].get('target') is not None
     assert not plot_only_correct or exist_label_information, 'The results do not contain answer.'
+    if len(list(results.values())[0][0]) < top_k:
+        warnings.warn(f'Top-k is set to {top_k} but the number of trials is {len(list(results.values())[0][0])}, less than {top_k}.')
 
     if exist_label_information:
-        n_correct = sum(
+        task_ids_correct = [key for key, task_result in results.items() if \
             all(any(
                 all(all(pixel == 3 for pixel in row) for row in trial['correct_pixels'])
-                    for trial in trials[:top_k if len(trials) <= top_k and plot_only_correct else len(trials)]) for trials in task_result)
-            for task_result in results.values())
-        print('N Data: {} | N Correct: {} | Accuracy: {:.2f}%'.format(len(results), n_correct, n_correct / len(results) * 100))
+                    for trial in trials[:top_k if len(trials) >= top_k else len(trials)]) for trials in task_result)
+        ]
+        print('N Submittable: {} | N Total: {} | N Correct: {} | Accuracy: {:.2f}%'. format(len(results), total, len(task_ids_correct), len(task_ids_correct)/total*100))
     else:
-        print('N Data:', len(results))
+        print('N Submittable: {} | N Total: {}'.format(len(results), total))
 
     for task_id, task_result in results.items():
-        if plot_only_correct and not all(any(
-            all(all(pixel == 3 for pixel in row) for row in trial['correct_pixels']) 
-                for trial in trials[:min(top_k, len(trials))]) for trials in task_result):
+        if plot_only_correct and task_id not in task_ids_correct:
             continue
 
         for i, trials in enumerate(task_result):
             for j, trial in enumerate(trials):
                 images = [trial[key] for key in ['input', 'output', 'target', 'correct_pixels'] if key in trial]
                 hparams = trial['hparams']
-                
-                if plot_only_correct and j == top_k:
-                    break
 
-                print(f'Task {task_id} | Test {i+1}: {hparams}')
+                if j == top_k:
+                    break
+                
+                if verbose:
+                    print(f'Task {task_id} | Test {i+1}: {hparams}')
                 plot_xyt(*images, task_id=task_id, titles=titles)
 
 
@@ -244,10 +247,14 @@ def print_image_with_probs(*images):
     print()
 
 
-def visualize_image_using_emoji(*images, titles=['Input', 'Output', 'Answer', 'Correct']):
+def visualize_image_using_emoji(*images, titles=('Input', 'Output', 'Answer', 'Correct')):
     '''
     ⬛️ = 0, 🟦 = 1, 🟥 = 2, 🟩 = 3, 🟨 = 4, ⬜️ = 5, 🟪 = 6, 🟧 = 7, ⏹️ = 8, 🟫 = 9
     '''
+
+    if len(images) > 2:
+        images = images[:1] + (images[2], images[1]) + (images[3:] if len(images) > 3 else tuple())
+        titles = titles[:1] + (titles[2], titles[1]) + (titles[3:] if len(titles) > 3 else tuple())
 
     images = [image.squeeze(0).detach().cpu() for image in images]
     images = [torch.argmax(image, dim=0).long() if len(image.shape) > 2 else image for image in images]
@@ -293,5 +300,3 @@ def visualize_image_using_emoji(*images, titles=['Input', 'Output', 'Answer', 'C
             line += '  '
         line += '\n' if h != n_lines - 1 else ''
     print(line)
-
-
