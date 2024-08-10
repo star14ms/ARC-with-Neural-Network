@@ -1,9 +1,10 @@
 name: "PixelEachSubstitutor"
 
 params:
-  pad_size: 1
+  n_range_search: 1
   max_width: 3
   max_height: 3
+  skip_sampler: False # Can solve the f76d97a5
   dims_reduced: [9]
   dims_decoded: [1]
   pad_class_initial: 0
@@ -20,6 +21,23 @@ params:
   num_classes: 10
 
   n_trials: 1
-  hyperparams_for_each_trial: []
-  max_epochs_for_each_task: 300
+  hyperparams_for_each_trial: [
+    {
+      n_range_search: 0,
+      max_width: 1,
+      max_height: 1,
+      dims_reduced: [1],
+      pad_n_head: 1,
+      L_num_layers: 4,
+    },
+    {
+      n_range_search: 1,
+      max_width: 3,
+      max_height: 3,
+      dims_reduced: [9],
+      pad_n_head: null,
+      L_num_layers: 4,
+    },
+  ]
+  max_epochs_for_each_task: 3
   train_loss_threshold_to_stop: 0.01

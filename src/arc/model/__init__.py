@@ -69,9 +69,10 @@ class FillerKeepInputIgnoreColorConfig:
 
 @dataclass
 class PixelEachSubstitutorConfig:
-    pad_size: int = 1
+    n_range_search: int = 1
     max_width: int = 3
     max_height: int = 3
+    skip_sampler: bool = False
     dims_reduced: List[int] = (9,)
     dims_decoded: List[int] = (1,)
     pad_class_initial: int = 0
@@ -89,9 +90,11 @@ class PixelEachSubstitutorConfig:
 
     n_trials: int = 1
     hyperparams_for_each_trial: List[dict] = tuple()
-    max_epochs_for_each_task: int = 300
+    max_epochs_for_each_task: int = 30
     train_loss_threshold_to_stop: float = 0.01
 
 @dataclass
 class PixelEachSubstitutorRepeatConfig(PixelEachSubstitutorConfig):
-    max_recurrences = 200
+    max_dfs: int = 30
+    max_queue: int = 20
+    max_depth: int = 4

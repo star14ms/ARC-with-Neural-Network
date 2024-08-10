@@ -29,9 +29,9 @@ class RichProgressBarCustom(RichProgressBar):
         # self.theme.progress_bar_pulse = 'bar.pulse'
 
     def _get_train_description(self, current_epoch: int) -> str:
-        train_description = f" Task 1"
+        train_description = f" Task "
         if self._trainer.fit_loop.max_batches is not None:
-            train_description += f"/{self._trainer.fit_loop.max_batches}"
+            train_description += '{:>5}'.format(f"1/{self._trainer.fit_loop.max_batches}")
         if len(self.validation_description) > len(train_description):
             # Padding is required to avoid flickering due of uneven lengths of "Epoch X"
             # and "Validation" Bar description
@@ -46,21 +46,25 @@ class RichProgressBarCustom(RichProgressBar):
         if max_epochs != 1:
             self.train_progress_bar0_id = self.progress.add_task(description=f'Epoch 1/{max_epochs}', total=max_epochs)
 
-    def _update(self, progress_bar_id: Optional["TaskID"], current: int, visible: bool = True, description: str | None = None) -> None:
+    def _update(self, progress_bar_id: Optional["TaskID"], current: float, completed: float | None = None, visible: bool = True, description: str | None = None) -> None:
         if self.progress is not None and self.is_enabled:
             assert progress_bar_id is not None
             task = filter(lambda task: task.id == progress_bar_id, self.progress.tasks).__next__()
             total = task.total
             assert total is not None
-            if not self._should_update(current, total):
+            if current is not None and not self._should_update(current, total):
                 return
 
             if description is None:
                 description = task.description
 
-            leftover = current % self.refresh_rate
-            advance = leftover if (current == total and leftover != 0) else self.refresh_rate
-            self.progress.update(progress_bar_id, advance=advance, visible=visible, description=description)
+            if completed is None:
+                leftover = current % self.refresh_rate
+                advance = leftover if (current == total and leftover != 0) else self.refresh_rate
+                self.progress.update(progress_bar_id, advance=advance, visible=visible, description=description)
+            else:
+                self.progress.update(progress_bar_id, completed=completed, visible=visible, description=description)
+
             self.refresh()
 
     @override
@@ -72,7 +76,7 @@ class RichProgressBarCustom(RichProgressBar):
         batch: Any,
         batch_idx: int,
     ) -> None:
-        train_description = " Task {}/{}".format(batch_idx + 1, self._trainer.fit_loop.max_batches)
+        train_description = ' Task {:>5}'.format("{}/{}".format(batch_idx + 1, self._trainer.fit_loop.max_batches))
         self._update(self.train_progress_bar_id, batch_idx + 1, description=train_description)
         self._update_metrics(trainer, pl_module)
         self.refresh()

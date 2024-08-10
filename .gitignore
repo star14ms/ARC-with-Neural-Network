@@ -171,9 +171,10 @@ outputs/
 !configs/data
 
 # Model
-output/*.pth
-output/*.ckpt
-output/*.json
+output/**/*.pth
+output/**/*.ckpt
+output/**/*.pkl
+output/**/*.json
 output/task_visualization/*
 
 # Sub Repository
