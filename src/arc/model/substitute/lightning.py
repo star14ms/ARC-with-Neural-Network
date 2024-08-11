@@ -13,7 +13,7 @@ from arc.utils.print import is_notebook
 
 
 class LightningModuleBase(pl.LightningModule):
-    def __init__(self, lr=0.001, save_n_perfect_epoch=4, top_k_submission=2, *args, **kwargs):
+    def __init__(self, lr=0.001, save_n_perfect_epoch=4, top_k_submission=2, save_dir=None, *args, **kwargs):
         super().__init__()
         self.lr = lr
         self.save_n_perfect_epoch = save_n_perfect_epoch
@@ -21,6 +21,8 @@ class LightningModuleBase(pl.LightningModule):
 
         self.submission = {}
         self.test_results = defaultdict(list)
+        self.save_dir = save_dir
+        self.log_file = self.save_dir + '/train.log' if save_dir is not None else None
 
         self.n_tasks_correct_in_epoch = 0
         self.n_tasks_total_in_epoch = 0
@@ -60,13 +62,13 @@ class LightningModuleBase(pl.LightningModule):
     def on_train_epoch_end(self):
         if self.no_label:
             return
-        print('Epoch {} | Accuracy: {:>5.1f}% Tasks ({}/{})'.format(
+        self.print_and_write('Epoch {} | Accuracy: {:>5.1f}% Tasks ({}/{})'.format(
             self.current_epoch+1, 
             self.n_tasks_correct_in_epoch / self.n_tasks_total_in_epoch * 100,
             self.n_tasks_correct_in_epoch,
             self.n_tasks_total_in_epoch,
         ))
-        
+
         # current_epoch = self.trainer.current_epoch
         # max_epochs = self.trainer.max_epochs
 
@@ -81,7 +83,7 @@ class LightningModuleBase(pl.LightningModule):
         # if self.n_continuous_epoch_no_pixel_wrong == self.save_n_perfect_epoch:
         #     save_path = f"./output/{self.model.__class__.__name__}_{self.current_epoch+1:02d}ep.ckpt"
         #     self.trainer.save_checkpoint(save_path)
-        #     print(f"Model saved to: {save_path}")
+        #     self.print_and_write(f"Model saved to: {save_path}")
 
         # free up the memory
         self.n_tasks_correct_in_epoch = 0
@@ -103,16 +105,15 @@ class LightningModuleBase(pl.LightningModule):
         self.progress._update_metrics(self.trainer, self)
         self.progress.refresh()
 
-    @staticmethod
-    def print_log(mode, n_tasks_correct, n_tasks_total, loss, end='\n'):
-        print('{} Accuracy: {:>5.1f}% Tasks ({}/{}) | {} loss {:.4f}'.format(
+    def print_log(self, mode, n_tasks_correct, n_tasks_total, loss):
+        self.print_and_write('{} Accuracy: {:>5.1f}% Tasks ({}/{}) | {} loss {:.4f}'.format(
             mode,
             n_tasks_correct / n_tasks_total * 100,
             n_tasks_correct,
             n_tasks_total,
             mode,
             loss
-        ), end=end)
+        ))
 
     def add_submission(self, task_id, results):
         # choose top k outputs from all trials. Accuracy is the first priority, loss is the second.
@@ -134,10 +135,16 @@ class LightningModuleBase(pl.LightningModule):
         self.test_results[task_id] = [self.test_results[task_id][idx] for idx in idxs_priority]
         self.test_results[task_id] = list(zip(*self.test_results[task_id]))
 
+    def print_and_write(self, log):
+        print(log)
+        if self.log_file is not None:
+            with open(self.log_file, 'a') as f:
+                print(log, file=f)
+
 
 class PixelEachSubstitutorL(LightningModuleBase):
-    def __init__(self, lr=0.001, model=None, n_trials=5, hyperparams_for_each_trial=[], max_epochs_for_each_task=300, train_loss_threshold_to_stop=0.01, *args, **kwargs):
-        super().__init__(lr, *args, **kwargs)
+    def __init__(self, lr=0.001, model=None, n_trials=5, save_dir=None, hyperparams_for_each_trial=[], max_epochs_for_each_task=300, train_loss_threshold_to_stop=0.01, *args, **kwargs):
+        super().__init__(lr=lr, save_dir=save_dir, *args, **kwargs)
 
         self.model_class = model if model is not None else PixelEachSubstitutor
         self.model = self.model_class(*args, **kwargs)
@@ -152,7 +159,7 @@ class PixelEachSubstitutorL(LightningModuleBase):
 
     def training_step(self, batches):
         batches_train, batches_test, task_id = batches
-        print('Task ID: [bold white]{}[/bold white]'.format(task_id))
+        self.print_and_write('Task ID: [bold white]{}[/bold white]'.format(task_id))
 
         id_prog_trial = self.progress._add_task(self.n_trials, f'Trial 0/{self.n_trials}')
         self.no_label = True if len(batches_test[0][1].shape) == 2 else False
@@ -172,7 +179,7 @@ class PixelEachSubstitutorL(LightningModuleBase):
                 'outputs': outputs,
             })
 
-            print(f"Trial {n+1}/{self.n_trials} | Restarting the training\n")
+            self.print_and_write(f"Trial {n+1}/{self.n_trials} | Restarting the training\n")
             self.progress._update(id_prog_trial, n+1, description=f'Trial {n+1}/{self.n_trials}')
 
         self.progress.progress.remove_task(id_prog_trial)
@@ -252,6 +259,7 @@ class PixelEachSubstitutorL(LightningModuleBase):
                 plot_xyt(x[0], y[0], t[0], correct_pixels, task_id=task_id)
             else:
                 visualize_image_using_emoji(x[0], t[0], y[0], correct_pixels, titles=['Input', 'Target', 'Output', 'Correct'])
+                visualize_image_using_emoji(x[0], t[0], y[0], correct_pixels, titles=['Input', 'Target', 'Output', 'Correct'], output_file=self.log_file)
 
             task_result.append({
                 'input': x[0].tolist(),
@@ -261,7 +269,7 @@ class PixelEachSubstitutorL(LightningModuleBase):
                 'hparams': {**self.model_kwargs, **self.params_for_each_trial[n]},
             })
 
-            print("Test {} | Correct: {} | Accuracy: {:>5.1f}% ({}/{})".format(
+            self.print_and_write("Test {} | Correct: {} | Accuracy: {:>5.1f}% ({}/{})".format(
                 i+1, '🟩' if n_correct == n_pixels else '🟥', n_correct/n_pixels*100, n_correct, n_pixels, 
             ))
 
@@ -321,7 +329,7 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
 
     def training_step(self, batches):
         batches_train, batches_test, task_id = batches
-        print('Task ID: [bold white]{}[/bold white]'.format(task_id))
+        self.print_and_write('Task ID: [bold white]{}[/bold white]'.format(task_id))
 
         self.no_label = True if len(batches_test[0][1].shape) == 2 else False
 
@@ -424,6 +432,7 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
 
                 answer_map = [result['c_decoded'] for result in results]
                 is_wrong_corrected_pixels = self._check_corrected_pixels(answer_map_prev, answer_map) # Prvent extension before finding the input
+                # __print_one_step_result()
 
                 if acc_next == acc_prev_max:
                     n_repeat_max_acc += 1
@@ -453,11 +462,9 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
                         'acc_prev_max': acc_prev_max,
                         'n_epochs_trained': n_epochs_trained,
                     })
-                # else:
-                #     print('-'*100)
-                # __print_one_step_result()
 
             if len(queue) == 0:
+                # print('-'*100)
                 queue.append(checkpoint0)
             if completed:
                 break
@@ -542,17 +549,18 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
             outputs.append(y_decoded[0])
 
             xytc = [(x, 'Input')] + ys + [(t_decoded, 'Target')] + [(c_decoded, 'Correct')]
-            # xytc_batches = [xytc[i:i+4] for i in range(0, len(xytc), 4)]
+            xytc_batches = [xytc[i:i+4] for i in range(0, len(xytc), 4)]
 
-            # for xytc_batch in xytc_batches:
-            #     titles = [title for _, title in xytc_batch]
-            #     xytcs = [xytc for xytc, _ in xytc_batch]
-            #     visualize_image_using_emoji(*xytcs, titles=titles)
+            for xytc_batch in xytc_batches:
+                titles = [title for _, title in xytc_batch]
+                xytcs = [xytc for xytc, _ in xytc_batch]
+                visualize_image_using_emoji(*xytcs, titles=titles, output_file=self.log_file)
 
             if self.is_notebook:
                 plot_xyt(x[0], y[0], t[0], c_decoded, task_id=task_id)
             else:
                 visualize_image_using_emoji(x, t, y, c_decoded, titles=['Input', 'Target', 'Output', 'Correct'])
+                visualize_image_using_emoji(x, t, y, c_decoded, titles=['Input', 'Target', 'Output', 'Correct'], output_file=self.log_file)
 
             task_result.append({
                 'input': x[0].tolist(),
@@ -561,7 +569,7 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
                 'correct_pixels': c_decoded[0].tolist(),
             })
 
-            print("Test {} | Correct: {} | Accuracy: {:>5.1f}% ({}/{})".format(
+            self.print_and_write("Test {} | Correct: {} | Accuracy: {:>5.1f}% ({}/{})".format(
                 i+1, '🟩' if n_correct == n_pixels else '🟥', n_correct/n_pixels*100, n_correct, n_pixels, 
             ))
 
@@ -606,9 +614,9 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
         return results
 
     @staticmethod
-    def _check_corrected_pixels(answer_map_prev, results):
+    def _check_corrected_pixels(answer_map_prev, answer_map):
         is_wrong_corrected_pixels = False
-        for correct_previous_batch, correct_current_batch in zip(answer_map_prev, results):
+        for correct_previous_batch, correct_current_batch in zip(answer_map_prev, answer_map):
             if torch.any(correct_previous_batch - correct_current_batch) > 0:
                 is_wrong_corrected_pixels = True
                 break

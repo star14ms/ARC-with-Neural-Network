@@ -9,6 +9,7 @@ import warnings
 import hydra
 from hydra.core.config_store import ConfigStore
 from omegaconf import OmegaConf, DictConfig
+import datetime
 from rich import print
 from rich.traceback import install
 install()
@@ -43,10 +44,19 @@ def train(config: DictConfig, model=None, filter_funcs=None, test=False, return_
     hparams_data['batch_size_max'] = batch_size_max
     hparams_data['augment_data'] = augment_data
 
+    # Hydra Output Directory
+    if os.path.exists('outputs'):
+        save_dir_parent = os.path.join('outputs', sorted(os.listdir('outputs/'))[-1])
+        save_dir = os.path.join(save_dir_parent, sorted(os.listdir(save_dir_parent))[-1])
+    elif save_dir is not None:
+        now = datetime.datetime.now()
+        save_dir = os.path.join(save_dir, now.strftime('%Y-%m-%d'), now.strftime('%H-%M-%S'))
+        os.makedirs(save_dir, exist_ok=True)
+
     if model is None or isinstance(model, type):
         model = model if isinstance(model, type) else None
         model_class = get_model_class(config.model.name if model is None else model.__name__)
-        model = model_class(lr=lr, model=model, **hparams_model)
+        model = model_class(lr=lr, model=model, save_dir=save_dir, **hparams_model)
         print(OmegaConf.to_yaml(config))
         print(model)
 
@@ -61,6 +71,7 @@ def train(config: DictConfig, model=None, filter_funcs=None, test=False, return_
     })
 
     trainer = TrainerCustom(
+        accelerator='cpu',
         max_epochs=max_epochs, 
         logger=logger, 
         log_every_n_steps=1, 
@@ -76,22 +87,21 @@ def train(config: DictConfig, model=None, filter_funcs=None, test=False, return_
     print('Seed used', torch.seed())
 
     # Save the model to disk (optional)
-    os.makedirs(save_dir, exist_ok=True)
-    save_path = os.path.join(save_dir, '{}.ckpt'.format(model.model.__class__.__name__))
-    trainer.save_checkpoint(save_path)
-    print('Model saved to:', save_path)
-    
+    # save_path = os.path.join(save_dir, '{}.ckpt'.format(model.model.__class__.__name__))
+    # trainer.save_checkpoint(save_path)
+    # print('Model saved to:', save_path)
+
     # Save the submission to disk (optional)
     save_path = os.path.join(save_dir, 'submission.json')
     with open(save_path, 'w') as f: 
         json.dump(model.submission, f)
-    print('Submission saved to:', save_path)
-    
+    print("Submission saved to: '{}'".format(save_path))
+
     # Save the test results to disk (optional)
     save_path = os.path.join(save_dir, 'test_results.json')
     with open(save_path, 'w') as f:
         json.dump(model.test_results, f)
-    print('Test results saved to:', save_path)
+    print("Test results saved to: '{}'".format(save_path))
 
     if test:
         test_fn(config, model)

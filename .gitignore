@@ -171,10 +171,10 @@ outputs/
 !configs/data
 
 # Model
-output/**/*.pth
-output/**/*.ckpt
-output/**/*.pkl
-output/**/*.json
+*.pth
+*.ckpt
+*.pkl
+*.json
 output/task_visualization/*
 
 # Sub Repository

@@ -249,7 +249,7 @@ def print_image_with_probs(*images):
     print()
 
 
-def visualize_image_using_emoji(*images, titles=['Input', 'Output', 'Answer', 'Correct']):
+def visualize_image_using_emoji(*images, titles=['Input', 'Output', 'Answer', 'Correct'], output_file=None):
     '''
     ⬛️ = 0, 🟦 = 1, 🟥 = 2, 🟩 = 3, 🟨 = 4, ⬜️ = 5, 🟪 = 6, 🟧 = 7, ⏹️ = 8, 🟫 = 9
     '''
@@ -263,7 +263,7 @@ def visualize_image_using_emoji(*images, titles=['Input', 'Output', 'Answer', 'C
     line = ''
     if titles:
         for title, image_width in zip(titles, [image.shape[1] for image in images]):
-            line += title.ljust(image_width * 2) + '  '
+            line += title.ljust(image_width * (2 if not output_file else 3)) + '  '
         line += '\n'
 
     for h in range(n_lines):
@@ -290,11 +290,17 @@ def visualize_image_using_emoji(*images, titles=['Input', 'Output', 'Answer', 'C
                 elif pixel_key == 7:
                     line += '🟧'
                 elif pixel_key == 8:
-                    line += '⏹️' if is_ipython else '⏹️ '
+                    line += '⏹️' if is_ipython or output_file else '⏹️ '
                 elif pixel_key == 9:
                     line += '🟫'
                 else:
                     line += '◽️'
+                line += ' ' if output_file else ''
             line += '  '
         line += '\n' if h != n_lines - 1 else ''
-    print(line)
+
+    if output_file:
+        with open(output_file, 'a') as f:
+            f.write(line + '\n')
+    else:
+        print(line)
