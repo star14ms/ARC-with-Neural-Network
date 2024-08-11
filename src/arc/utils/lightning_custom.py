@@ -31,7 +31,7 @@ class RichProgressBarCustom(RichProgressBar):
     def _get_train_description(self, current_epoch: int) -> str:
         train_description = f" Task "
         if self._trainer.fit_loop.max_batches is not None:
-            train_description += '{:>5}'.format(f"1/{self._trainer.fit_loop.max_batches}")
+            train_description += '{}'.format(f"0/{self._trainer.fit_loop.max_batches}")
         if len(self.validation_description) > len(train_description):
             # Padding is required to avoid flickering due of uneven lengths of "Epoch X"
             # and "Validation" Bar description
@@ -44,7 +44,7 @@ class RichProgressBarCustom(RichProgressBar):
         max_epochs = self._trainer.max_epochs
         
         if max_epochs != 1:
-            self.train_progress_bar0_id = self.progress.add_task(description=f'Epoch 1/{max_epochs}', total=max_epochs)
+            self.train_progress_bar0_id = self.progress.add_task(description=f'Epoch 1', total=max_epochs)
 
     def _update(self, progress_bar_id: Optional["TaskID"], current: float, completed: float | None = None, visible: bool = True, description: str | None = None) -> None:
         if self.progress is not None and self.is_enabled:
@@ -76,7 +76,7 @@ class RichProgressBarCustom(RichProgressBar):
         batch: Any,
         batch_idx: int,
     ) -> None:
-        train_description = ' Task {:>5}'.format("{}/{}".format(batch_idx + 1, self._trainer.fit_loop.max_batches))
+        train_description = ' Task {}'.format("{}/{}".format(batch_idx + 1, self._trainer.fit_loop.max_batches))
         self._update(self.train_progress_bar_id, batch_idx + 1, description=train_description)
         self._update_metrics(trainer, pl_module)
         self.refresh()

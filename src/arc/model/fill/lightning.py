@@ -80,7 +80,7 @@ class FillerKeepInputL(LightningModuleBase):
                 y_origin = torch.argmax(y.detach().cpu(), dim=1).long() # [H, W]
                 t_origin = torch.argmax(t.detach().cpu(), dim=1).long()
                 n_pixels_wrong += (y_origin != t_origin).sum().int()
-                # visualize_image_using_emoji(x[0], y[0], t[0])
+                # visualize_image_using_emoji(x[0], t[0], y[0], titles=['Input', 'Target', 'Output'])
 
             # if i == total-1: # and (y_origin != t).sum().int() == 0:
             #     plot_xyt(x_origin, y_origin, t_origin)

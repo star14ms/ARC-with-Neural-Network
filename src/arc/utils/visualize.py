@@ -77,13 +77,14 @@ def plot_single_image(matrix, ax, title, cmap, norm):
     ax.set_title(title, fontweight='bold')
 
 
-def plot_xyt(*images, task_id, titles=('Input', 'Predicted', 'Answer', 'Correct')):
+def plot_xyt(*images, task_id, titles=['Input', 'Predicted', 'Answer', 'Correct']):
     """Plots the input, predicted, and answer pairs of a specified task, using the ARC color scheme."""
     num_img = len(images)
     
-    if num_img > 2:
-        images = images[:1] + (images[2], images[1]) + (images[3:] if len(images) > 3 else tuple())
-        titles = titles[:1] + (titles[2], titles[1]) + (titles[3:] if len(titles) > 3 else tuple())
+    if num_img > 2 and num_img < 5:
+        images = list(images)
+        images[1], images[2] = images[2], images[1]
+        titles[1], titles[2] = titles[2], titles[1]
     
     fig, axs = plt.subplots(1, num_img, figsize=(len(images)*3, 3))
     plt.suptitle(f'Task {task_id}', fontsize=20, fontweight='bold', y=0.96)
@@ -105,17 +106,18 @@ def plot_xyt(*images, task_id, titles=('Input', 'Predicted', 'Answer', 'Correct'
     plt.show()
 
 
-def plot_xyts(task_result, title_prefix="Task", subtitles=('Inputs', 'Outputs', 'Answers', 'Corrects')):
+def plot_xyts(task_result, title_prefix="Task", subtitles=['Inputs', 'Outputs', 'Answers', 'Corrects']):
     """Plots rows of input, predicted, and answer triples for a set of tasks, using the ARC color scheme."""
     num_pairs = len(task_result)
     num_columns = len(task_result[0])
     
-    if num_columns > 2:
-        task_result = [task[:1] + (task[2], task[1]) + (task[3:] if len(task) > 3 else tuple()) for task in task_result]
-        subtitles = subtitles[:1] + (subtitles[2], subtitles[1]) + (subtitles[3:] if len(subtitles) > 3 else tuple())
+    if num_columns > 2 and num_columns < 5:
+        task_result = list(task_result)
+        task_result[1], task_result[2] = task_result[2], task_result[1]
+        subtitles[1], subtitles[2] = subtitles[2], subtitles[1]
 
     fig, axs = plt.subplots(num_columns, num_pairs, figsize=(num_columns*6, 10))
-    
+
     task_result = [tuple(image.detach().cpu().squeeze(0).long() if isinstance(image, torch.Tensor) else torch.tensor(image) for image in images) for images in task_result]
     task_result = [tuple(torch.argmax(image, dim=0) if len(image.shape) > 2 else image for image in images) for images in task_result]
 
@@ -138,7 +140,7 @@ def plot_xyts(task_result, title_prefix="Task", subtitles=('Inputs', 'Outputs', 
     plt.show()
 
 
-def plot_xyt_from_json(file_path='./output/test_results.json', titles=('Input', 'Output', 'Answer', 'Correct'), plot_only_correct=False, top_k=2, total=400, verbose=False):
+def plot_xyt_from_json(file_path='./output/test_results.json', titles=['Input', 'Output', 'Answer', 'Correct'], plot_only_correct=False, top_k=2, total=400, verbose=False):
     results = json.load(open(file_path, 'r'))
 
     exist_label_information = list(results.values())[0][0][0].get('target') is not None
@@ -247,14 +249,10 @@ def print_image_with_probs(*images):
     print()
 
 
-def visualize_image_using_emoji(*images, titles=('Input', 'Output', 'Answer', 'Correct')):
+def visualize_image_using_emoji(*images, titles=['Input', 'Output', 'Answer', 'Correct']):
     '''
     ⬛️ = 0, 🟦 = 1, 🟥 = 2, 🟩 = 3, 🟨 = 4, ⬜️ = 5, 🟪 = 6, 🟧 = 7, ⏹️ = 8, 🟫 = 9
     '''
-
-    if len(images) > 2:
-        images = images[:1] + (images[2], images[1]) + (images[3:] if len(images) > 3 else tuple())
-        titles = titles[:1] + (titles[2], titles[1]) + (titles[3:] if len(titles) > 3 else tuple())
 
     images = [image.squeeze(0).detach().cpu() for image in images]
     images = [torch.argmax(image, dim=0).long() if len(image.shape) > 2 else image for image in images]

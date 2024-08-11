@@ -4,8 +4,6 @@ from torch import nn
 import torch.nn.functional as F
 from collections import defaultdict
 import os
-import copy
-import pickle
 from rich import print
 
 from arc.model.substitute.pixel_each import PixelEachSubstitutor
@@ -69,21 +67,21 @@ class LightningModuleBase(pl.LightningModule):
             self.n_tasks_total_in_epoch,
         ))
         
-        current_epoch = self.trainer.current_epoch
-        max_epochs = self.trainer.max_epochs
+        # current_epoch = self.trainer.current_epoch
+        # max_epochs = self.trainer.max_epochs
 
-        if current_epoch+1 == max_epochs:
-            self.progress.progress.stop()
+        # if current_epoch+1 == max_epochs:
+        #     self.progress.progress.stop()
 
-        if self.n_tasks_correct_in_epoch == self.n_tasks_total_in_epoch:
-            self.n_continuous_epoch_no_pixel_wrong += 1
-        else:
-            self.n_continuous_epoch_no_pixel_wrong = 0
+        # if self.n_tasks_correct_in_epoch == self.n_tasks_total_in_epoch:
+        #     self.n_continuous_epoch_no_pixel_wrong += 1
+        # else:
+        #     self.n_continuous_epoch_no_pixel_wrong = 0
 
-        if self.n_continuous_epoch_no_pixel_wrong == self.save_n_perfect_epoch:
-            save_path = f"./output/{self.model.__class__.__name__}_{self.current_epoch+1:02d}ep.ckpt"
-            self.trainer.save_checkpoint(save_path)
-            print(f"Model saved to: {save_path}")
+        # if self.n_continuous_epoch_no_pixel_wrong == self.save_n_perfect_epoch:
+        #     save_path = f"./output/{self.model.__class__.__name__}_{self.current_epoch+1:02d}ep.ckpt"
+        #     self.trainer.save_checkpoint(save_path)
+        #     print(f"Model saved to: {save_path}")
 
         # free up the memory
         self.n_tasks_correct_in_epoch = 0
@@ -161,7 +159,7 @@ class PixelEachSubstitutorL(LightningModuleBase):
 
         results = []
         for n in range(self.n_trials):
-            info_train = self._training_step_train(batches_train, task_id, n)
+            info_train = self._training_step(batches_train, task_id, n)
             self.print_log('Train', **info_train)
 
             info, outputs = self._training_step_test(batches_test, task_id, n) if not self.no_label else self._test_step_test(batches_test, task_id, n)
@@ -189,7 +187,7 @@ class PixelEachSubstitutorL(LightningModuleBase):
             'n_tasks_total': len(batches_test),
         }
 
-    def _training_step_train(self, batches_train, task_id, n):
+    def _training_step(self, batches_train, task_id, n):
         max_epochs_for_each_task = self.max_epochs_for_each_task
         n_tasks_total = sum([len(b[0]) for b in batches_train])
         
@@ -253,7 +251,7 @@ class PixelEachSubstitutorL(LightningModuleBase):
             if self.is_notebook:
                 plot_xyt(x[0], y[0], t[0], correct_pixels, task_id=task_id)
             else:
-                visualize_image_using_emoji(x[0], y[0], t[0], correct_pixels)
+                visualize_image_using_emoji(x[0], t[0], y[0], correct_pixels, titles=['Input', 'Target', 'Output', 'Correct'])
 
             task_result.append({
                 'input': x[0].tolist(),
@@ -328,7 +326,7 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
         self.no_label = True if len(batches_test[0][1].shape) == 2 else False
 
         results = []
-        info_train = self._training_step_train(batches_train, task_id)
+        info_train = self._training_step(batches_train, task_id)
         self.print_log('Train', **info_train)
 
         info, outputs = self._training_step_test(batches_test, task_id) if not self.no_label else self._test_step_test(batches_test, task_id)
@@ -354,13 +352,14 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
             'n_tasks_total': len(batches_test),
         }
 
-    def _training_step_train(self, batches_train, task_id):
+    def _training_step(self, batches_train, task_id):
         def __print_one_step_result():
-            for output_info_batch in output_info:
-                for x_one, y_one, t_one, c_one in zip(*output_info_batch):
+            for result in results:
+                for x_one, y_one, t_one, c_one in zip(result['x_decoded'], result['y_decoded'], result['t_decoded'], result['c_decoded']):
                     c_one = torch.where(c_one == 1, 3, 2)
-                    visualize_image_using_emoji(x_one, y_one, t_one, c_one)
-            print('Accuracy: {:.1f}% -> {:.1f}% ({:.1f}) | Depth: {} | Model {}'.format(acc_prev*100, acc_next*100, acc_prev_max*100, len(models_temp), 'O'*len(models_temp))) # [_model.id for _model in models_temp]
+                    visualize_image_using_emoji(x_one, t_one, y_one, c_one, titles=['Input', 'Target', 'Output', 'Correct'])
+            
+            print('Accuracy: {:.1f}% -> {:.1f}% ({:.1f}) | Input Kept: {} | Depth: {} | {}'.format(acc_prev*100, acc_next*100, acc_prev_max*100, not is_wrong_corrected_pixels, len(models_temp), '▶️'*len(models_temp))) # [_model.id for _model in models_temp]
             # print('Queue:', ' '.join(
             #     ['{}'.format((round(acc.item()*100, 1), [_model.id for _model in _models])) \
             #     for _models, _, _, _, acc, _, _ in queue]
@@ -384,14 +383,6 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
 
             return models_temp, opt
 
-        def __check_corrected_pixels(answer_map_prev, answer_map):
-            is_wrong_corrected_pixels = False
-            for correct_previous_batch, correct_current_batch in zip(answer_map_prev, answer_map):
-                if torch.any(correct_previous_batch - correct_current_batch) > 0:
-                    is_wrong_corrected_pixels = True
-                    break
-            return is_wrong_corrected_pixels
-
         n_tasks_total = sum([len(b[0]) for b in batches_train])
 
         accuracy0, answer_map0 = self.get_avg_accuracy(batches_train, return_corrects_info=True)
@@ -401,73 +392,56 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
             'opt': None,
             'acc_prev': accuracy0,
             'acc_prev_max': accuracy0,
-            'checkpoint_path': None,
+            'n_epochs_trained': [],
         }
         queue = [checkpoint0]
 
-        id_prog_acc = self.progress._add_task(100, f'Acc      0%')
-        id_prog_dfs = self.progress._add_task(self.max_dfs, 'Search 0/{}'.format(self.max_dfs))
+        id_prog_acc = self.progress._add_task(100, '  Acc {}'.format('0%'))
+        id_prog_dfs = self.progress._add_task(self.max_dfs, '  DFS {}'.format(f'0/{self.max_dfs}'))
         next_id = 0
         completed = False
 
         for i in range(self.max_dfs): # DFS
-            self.update_task_progress(id_prog_dfs, i+1, task_id=task_id, n_queue=len(queue), depth=len(queue[0]['models']), description=f'Search {i+1}/{self.max_dfs}')
+            self.update_task_progress(id_prog_dfs, i+1, task_id=task_id, n_queue=len(queue), depth=max(len(queue[0]['models']), 1), description='  DFS {}'.format(f'{i+1}/{self.max_dfs}'))
             
             queue = sorted(queue, key=lambda x: x['acc_prev_max'], reverse=True)
             checkpoint = queue.pop(0)
-            models, answer_map_prev, opt_prev, acc_prev, acc_prev_max, checkpoint_path = \
+            models, answer_map_prev, opt_prev, acc_prev, acc_prev_max, n_epochs_trained = \
                 checkpoint.get('models'), \
                 checkpoint.get('answer_map'), \
                 checkpoint.get('opt'), \
                 checkpoint.get('acc_prev'), \
                 checkpoint.get('acc_prev_max'), \
-                checkpoint.get('checkpoint_path')
+                checkpoint.get('n_epochs_trained')
 
             for i in range(self.n_trials + 1):
                 models_temp, opt = __build_models()
-                output_info, total_loss, acc_next, n_tasks_correct, opt = self._training_step_train_one_step(models_temp, batches_train, opt, acc_prev)
+                results, total_loss, acc_next, n_tasks_correct, opt, n_epoch_trained = self._training_step_one_depth(models_temp, batches_train, opt, acc_prev)
 
                 acc_max = max([_checkpoint['acc_prev_max'] for _checkpoint in queue] + [acc_prev_max])
-                self.update_task_progress(id_prog_acc, completed=acc_max*100, description=f'  Acc{acc_max*100:>5.1f}%' if acc_max != 1 else f'  Acc  100%')
-                __print_one_step_result()
+                self.update_task_progress(id_prog_acc, completed=acc_max*100, description=f'  Acc {acc_max*100:.1f}%' if acc_max != 1 else f'  Acc 100%')
 
-                answer_map = output_info[-1]
-                # is_wrong_corrected_pixels = __check_corrected_pixels(answer_map_prev, answer_map)
+                answer_map = [result['c_decoded'] for result in results]
+                is_wrong_corrected_pixels = self._check_corrected_pixels(answer_map_prev, answer_map) # Prvent extension before finding the input
+
+                if acc_next == acc_prev_max:
+                    n_repeat_max_acc += 1
+                else:
+                    n_repeat_max_acc = 0
                 acc_prev_max = max(acc_prev_max, acc_next)
+                n_epochs_trained.append(n_epoch_trained)
 
                 if acc_next == 1 and acc_prev == acc_next:
                     completed = True
                     break
                 elif acc_next >= acc_prev_max and len(models_temp) < self.max_depth:
-                    kwargs = self.params_for_each_trial[i] if i < len(self.params_for_each_trial) else {}
-                    model = self.model_class(*self.model_args, **{**self.model_kwargs, **kwargs})
-                    model.load_state_dict(copy.deepcopy(models_temp[-1].state_dict()))
-                    model.id = models_temp[-1].id # (next_id := next_id + 1)
-                    models_current = [model for _ in range(len(models_temp))]
-
-                    opt_current = torch.optim.Adam(model.parameters(), lr=self.lr)
-                    opt_current.load_state_dict(copy.deepcopy(opt.state_dict()))
-
-                    checkpoint_prev = {
-                        'models': models_current,
-                        'answer_map': answer_map,
-                        'opt': opt_current,
-                        'acc_prev': acc_next,
-                        'acc_prev_max': acc_prev_max,
-                        'checkpoint_path': checkpoint_path
-                    }
-
-                    os.makedirs('./output/checkpoint/', exist_ok=True)
-                    checkpoint_path = './output/checkpoint/acc_{}_depth_{}_{}.pkl'.format(round(acc_next.item()*100, 1), len(models_temp), i+1)
-                    pickle.dump(checkpoint_prev, open(checkpoint_path, 'wb'))
-
                     queue.append({
                         'models': models_temp + models_temp[-1:],
                         'answer_map': answer_map,
                         'opt': opt,
                         'acc_prev': acc_next,
                         'acc_prev_max': acc_prev_max,
-                        'checkpoint_path': checkpoint_path
+                        'n_epochs_trained': n_epochs_trained,
                     })
                 elif acc_next == 1 or acc_next >= acc_prev:
                     queue.append({
@@ -476,15 +450,13 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
                         'opt': opt,
                         'acc_prev': acc_next,
                         'acc_prev_max': acc_prev_max,
-                        'checkpoint_path': checkpoint_path
+                        'n_epochs_trained': n_epochs_trained,
                     })
-                # elif checkpoint_path is not None:
-                #     print('Load from the previous checkpoint')
-                #     checkpoint_prev = pickle.load(open(checkpoint_path, 'rb'))
-                #     queue.append(checkpoint_prev)
+                # else:
+                #     print('-'*100)
+                # __print_one_step_result()
 
             if len(queue) == 0:
-                print('-'*100)
                 queue.append(checkpoint0)
             if completed:
                 break
@@ -492,6 +464,7 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
         self.progress.progress.remove_task(id_prog_dfs)
         self.progress.progress.remove_task(id_prog_acc)
         self.models = models
+        # print('N Epochs Trained:', n_epochs_trained, len(models))
 
         return {
             'loss': total_loss,
@@ -499,14 +472,14 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
             'n_tasks_total': n_tasks_total,
         }
 
-    def _training_step_train_one_step(self, models, batches_train, opt, acc_prev):
+    def _training_step_one_depth(self, models, batches_train, opt, acc_prev):
         max_epochs_for_each_task = self.max_epochs_for_each_task
         id_prog_e = self.progress._add_task(max_epochs_for_each_task, f'Epoch 0/{max_epochs_for_each_task}')
     
         t_batch = [batch[1] for batch in batches_train]
 
         for e in range(max_epochs_for_each_task):
-            output_info_batch = []
+            results = []
             total_loss = 0
             y_batch = []
 
@@ -527,17 +500,17 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
                 # if (e+1) % 5 == 0:
                 #     c_decoded = torch.where(y_decoded == t_decoded, 3, 2)
                 #     for x_one, y_one, t_one, c_one in zip(x_decoded, y_decoded, t_decoded, c_decoded):
-                #         visualize_image_using_emoji(x_one, y_one, t_one, c_one)
+                #         visualize_image_using_emoji(x_one, t_one, y_one, c_one, titles=['Input', 'Target', 'Output', 'Correct'])
                 #     print('-'*50)
 
                 c_decoded = torch.where(y_decoded == t_decoded, 1, 0)
-                output_info_batch.append((x_decoded, y_decoded, t_decoded, c_decoded))
+                results.append({'x_decoded': x_decoded, 'y_decoded': y_decoded, 't_decoded': t_decoded, 'c_decoded': c_decoded})
                 total_loss += loss
                 y_batch.append(y)
 
             acc_next = self.get_avg_accuracy(zip(y_batch, t_batch))
 
-            if (acc_prev < acc_next and len(models) < self.max_depth) or acc_next == 1:
+            if acc_next == 1 or (acc_prev < acc_next and len(models) < self.max_depth):
                 break
             
             self.update_task_progress(id_prog_e, e+1, loss=loss, description=f'Epoch {e+1}/{self.max_epochs_for_each_task}')
@@ -545,38 +518,46 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
         self.progress.progress.remove_task(id_prog_e)
         acc_next, n_tasks_correct = self.get_avg_accuracy(zip(y_batch, t_batch), return_n_tasks_correct=True)
 
-        return output_info_batch, total_loss, acc_next, n_tasks_correct, opt
+        return results, total_loss, acc_next, n_tasks_correct, opt, e+1
 
     def _training_step_test(self, batches_test, task_id):
         total_loss = 0
         self.n_tasks_correct = 0
         task_result = []
         outputs = []
+        ys = []
+        self.models[0].eval()
 
         for i, (x, t) in enumerate(batches_test):
             y = x
             for model in self.models:
                 y = model(y)
+                ys.append((y, 'Depth {}'.format(depth+1)))
             loss = self.loss_fn(y, t)
             total_loss += loss
 
-            y_decoded = torch.argmax(y, dim=1).long()
-            t_decoded = torch.argmax(t, dim=1).long()
-
             y_decoded, t_decoded, n_correct, n_pixels = self.update_prediction_info(y, t)
+            c_decoded = torch.where(y_decoded == t_decoded, 3, 2)
             outputs.append(y_decoded[0])
 
-            correct_pixels = torch.where(y_decoded == t_decoded, 3, 2)
+            xytc = [(x, 'Input')] + ys + [(t_decoded, 'Target')] + [(c_decoded, 'Correct')]
+            # xytc_batches = [xytc[i:i+4] for i in range(0, len(xytc), 4)]
+
+            # for xytc_batch in xytc_batches:
+            #     titles = [title for _, title in xytc_batch]
+            #     xytcs = [xytc for xytc, _ in xytc_batch]
+            #     visualize_image_using_emoji(*xytcs, titles=titles)
+
             if self.is_notebook:
-                plot_xyt(x[0], y[0], t[0], correct_pixels, task_id=task_id)
+                plot_xyt(x[0], y[0], t[0], c_decoded, task_id=task_id)
             else:
-                visualize_image_using_emoji(x[0], y[0], t[0], correct_pixels)
+                visualize_image_using_emoji(x, t, y, c_decoded, titles=['Input', 'Target', 'Output', 'Correct'])
 
             task_result.append({
                 'input': x[0].tolist(),
                 'output': y_decoded[0].tolist(),
                 'target': t_decoded[0].tolist(),
-                'correct_pixels': correct_pixels[0].tolist(),
+                'correct_pixels': c_decoded[0].tolist(),
             })
 
             print("Test {} | Correct: {} | Accuracy: {:>5.1f}% ({}/{})".format(
@@ -606,7 +587,7 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
             if return_corrects_info:
                 c_decoded_batch.append(c_decoded)
 
-            accuarcy_each = torch.sum(c_decoded) / y.argmax(dim=1)[0].numel() # [N, C, H, W]
+            accuarcy_each = torch.sum(c_decoded, dim=(1, 2)) / y.argmax(dim=1)[0].numel() # [N, C, H, W]
             accuracy_total += torch.sum(accuarcy_each)
             data_total += len(y)
             n_tasks_correct += torch.sum(torch.where(accuarcy_each == 1, 1, 0))
@@ -622,3 +603,12 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
         if len(results) == 1:
             return results[0]
         return results
+
+    @staticmethod
+    def _check_corrected_pixels(answer_map_prev, results):
+        is_wrong_corrected_pixels = False
+        for correct_previous_batch, correct_current_batch in zip(answer_map_prev, results):
+            if torch.any(correct_previous_batch - correct_current_batch) > 0:
+                is_wrong_corrected_pixels = True
+                break
+        return is_wrong_corrected_pixels
