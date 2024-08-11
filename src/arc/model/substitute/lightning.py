@@ -444,7 +444,7 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
                 if acc_next == 1 and acc_prev == acc_next:
                     completed = True
                     break
-                elif acc_next >= acc_prev_max and (not is_wrong_corrected_pixels or len(models_temp) != 1) and len(models_temp) < self.max_depth and n_repeat_max_acc < 2:
+                elif acc_next >= acc_prev_max and not is_wrong_corrected_pixels and len(models_temp) < self.max_depth and n_repeat_max_acc < 2:
                     queue.append({
                         'models': models_temp + models_temp[-1:],
                         'answer_map': answer_map,
@@ -453,7 +453,7 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
                         'acc_prev_max': acc_prev_max,
                         'n_epochs_trained': n_epochs_trained,
                     })
-                elif acc_next == 1 or acc_next >= acc_prev and n_repeat_max_acc < 3:
+                elif acc_next == 1 or (acc_next >= acc_prev and n_repeat_max_acc < 3):
                     queue.append({
                         'models': models_temp,
                         'answer_map': answer_map,
@@ -617,7 +617,7 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
     def _check_corrected_pixels(answer_map_prev, answer_map):
         is_wrong_corrected_pixels = False
         for correct_previous_batch, correct_current_batch in zip(answer_map_prev, answer_map):
-            if torch.any(correct_previous_batch - correct_current_batch) > 0:
+            if torch.any((correct_previous_batch - correct_current_batch) > 0):
                 is_wrong_corrected_pixels = True
                 break
         return is_wrong_corrected_pixels

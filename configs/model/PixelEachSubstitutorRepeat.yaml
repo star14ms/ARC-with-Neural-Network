@@ -5,7 +5,6 @@ params:
   max_width: 3
   max_height: 3
   skip_sampler: False
-  C_dims_encoded: [10]
   L_dims_encoded: [64, 32]
   L_dims_decoded: [1]
   pad_class_initial: 0
