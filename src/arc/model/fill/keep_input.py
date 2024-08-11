@@ -60,23 +60,23 @@ class ConvSameColorFeatureExtractor(nn.Module):
 
 
 class FillerKeepInput(nn.Module):
-    def __init__(self, reduced_channels_encoder=[512, 32], reduced_channels_decoder=[32, 32], d_conv_feature=16, pad_value=-1, d_class_feature=32, num_classes=len(COLORS)):
+    def __init__(self, reduced_channels_encoder=[512, 32], reduced_channels_decoder=[32, 32], d_conv_feature=16, pad_value=-1, d_class_feature=32, n_class=len(COLORS)):
         super().__init__()
         self.feature_extractor = ConvSameColorFeatureExtractor(reduced_channels_encoder, reduced_channels_decoder, d_conv_feature, pad_value)
         self.d_class_feature = d_class_feature
     
         self.attn_input = nn.TransformerDecoder(
-            nn.TransformerDecoderLayer(d_model=num_classes, nhead=1, dim_feedforward=1, batch_first=True, bias=False),
+            nn.TransformerDecoderLayer(d_model=n_class, nhead=1, dim_feedforward=1, batch_first=True, bias=False),
             num_layers=1,
         )
         self.attn_feature = nn.TransformerDecoder(
-            nn.TransformerDecoderLayer(d_model=num_classes, nhead=1, dim_feedforward=1, batch_first=True, bias=True),
+            nn.TransformerDecoderLayer(d_model=n_class, nhead=1, dim_feedforward=1, batch_first=True, bias=True),
             num_layers=1,
         )
         self.decoder = nn.Sequential(
             nn.Linear(d_class_feature, 1, bias=False),
         )
-        self.color_vector = nn.Parameter(torch.randn(num_classes, d_class_feature)) # Task_specific color vector
+        self.color_vector = nn.Parameter(torch.randn(n_class, d_class_feature)) # Task_specific color vector
 
     def forward(self, x, n_recurrance_feature_extraction=None):
         N, C, H, W = x.shape

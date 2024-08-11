@@ -73,8 +73,8 @@ class PixelEachSubstitutorConfig:
     max_width: int = 3
     max_height: int = 3
     skip_sampler: bool = False
-    dims_reduced: List[int] = (9,)
-    dims_decoded: List[int] = (1,)
+    L_dims_encoded: List[int] = (9,)
+    L_dims_decoded: List[int] = (1,)
     pad_class_initial: int = 0
     pad_n_head: int | None = None
     pad_dim_feedforward: int = 1
@@ -86,7 +86,7 @@ class PixelEachSubstitutorConfig:
     C_dim_feedforward: int = 1
     C_num_layers: int = 1
     dropout: float = 0.1
-    num_classes: int = 10
+    n_class: int = 10
 
     n_trials: int = 1
     hyperparams_for_each_trial: List[dict] = tuple()

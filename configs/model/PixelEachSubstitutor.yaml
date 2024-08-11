@@ -5,8 +5,8 @@ params:
   max_width: 3
   max_height: 3
   skip_sampler: False # Can solve the f76d97a5
-  dims_reduced: [9]
-  dims_decoded: [1]
+  L_dims_encoded: [9]
+  L_dims_decoded: [1]
   pad_class_initial: 0
   pad_num_layers: 1
   pad_n_head: null
@@ -18,7 +18,7 @@ params:
   C_n_head: null
   C_dim_feedforward: 1
   dropout: 0.1
-  num_classes: 10
+  n_class: 10
 
   n_trials: 1
   hyperparams_for_each_trial: [
@@ -26,7 +26,7 @@ params:
       n_range_search: 0,
       max_width: 1,
       max_height: 1,
-      dims_reduced: [1],
+      L_dims_encoded: [1],
       pad_n_head: 1,
       L_num_layers: 4,
     },
@@ -34,7 +34,7 @@ params:
       n_range_search: 1,
       max_width: 3,
       max_height: 3,
-      dims_reduced: [9],
+      L_dims_encoded: [9],
       pad_n_head: null,
       L_num_layers: 4,
     },

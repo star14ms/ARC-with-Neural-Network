@@ -5,26 +5,27 @@ params:
   max_width: 3
   max_height: 3
   skip_sampler: False
-  dims_reduced: [32]
-  dims_decoded: [1]
+  C_dims_encoded: [10]
+  L_dims_encoded: [64, 32]
+  L_dims_decoded: [1]
   pad_class_initial: 0
-  pad_num_layers: True
+  pad_num_layers: 1
   pad_n_head: null
   pad_dim_feedforward: 1
-  L_num_layers: 2
+  L_num_layers: 1
   L_n_head: null
   L_dim_feedforward: 1
   C_num_layers: 1
   C_n_head: null
   C_dim_feedforward: 1
   dropout: 0.1
-  num_classes: 10
+  n_class: 10
 
   n_trials: 0
   hyperparams_for_each_trial: []
-  max_epochs_for_each_task: 20
+  max_epochs_for_each_task: 30
   train_loss_threshold_to_stop: 0.01
 
   max_dfs: 100
   max_queue: 20
-  max_depth: 6
+  max_depth: 30

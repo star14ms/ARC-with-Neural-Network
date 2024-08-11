@@ -2,7 +2,7 @@ import torch
 from arc.constants import COLORS
 
 
-def one_hot_encode(matrix, num_classes=len(COLORS), cold_value=0, last_dim_ones=False, device=None):
+def one_hot_encode(matrix, n_class=len(COLORS), cold_value=0, last_dim_ones=False, device=None):
     # Ensure the input is a tensor
     if not isinstance(matrix, torch.Tensor):
         matrix = torch.tensor(matrix)
@@ -10,11 +10,11 @@ def one_hot_encode(matrix, num_classes=len(COLORS), cold_value=0, last_dim_ones=
     # Get the dimensions of the input matrix
     H, W = matrix.shape
     
-    # Create a one-hot encoded tensor with shape [num_classes, H, W]
+    # Create a one-hot encoded tensor with shape [n_class, H, W]
     if cold_value == 0:
-        one_hot_matrix = torch.zeros(num_classes, H, W, device=device)
+        one_hot_matrix = torch.zeros(n_class, H, W, device=device)
     else:
-        one_hot_matrix = torch.full([num_classes, H, W], cold_value, dtype=torch.float32, device=device)
+        one_hot_matrix = torch.full([n_class, H, W], cold_value, dtype=torch.float32, device=device)
     
     # Use scatter_ to fill in the one-hot encoded tensor
     one_hot_matrix.scatter_(0, matrix.unsqueeze(0), 1)
@@ -26,7 +26,7 @@ def one_hot_encode(matrix, num_classes=len(COLORS), cold_value=0, last_dim_ones=
     return one_hot_matrix
 
 
-def one_hot_encode_changes(x, t, num_classes=len(COLORS)):
+def one_hot_encode_changes(x, t, n_class=len(COLORS)):
     # Ensure the inputs are tensors
     if not isinstance(x, torch.Tensor):
         x = torch.tensor(x)
@@ -36,9 +36,9 @@ def one_hot_encode_changes(x, t, num_classes=len(COLORS)):
     # Get the dimensions of the input matrices
     N, M = x.shape
 
-    # Create one-hot encoded tensors with shape [num_classes, N, M]
+    # Create one-hot encoded tensors with shape [n_class, N, M]
     source = torch.zeros((N, M))
-    target_one_hot = torch.zeros((num_classes, N, M))
+    target_one_hot = torch.zeros((n_class, N, M))
 
     # Find the indices where x and t differ
     source = change_indices = (x != t)

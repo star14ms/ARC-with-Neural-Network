@@ -400,6 +400,7 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
         id_prog_dfs = self.progress._add_task(self.max_dfs, '  DFS {}'.format(f'0/{self.max_dfs}'))
         next_id = 0
         completed = False
+        n_repeat_max_acc = 0
 
         for i in range(self.max_dfs): # DFS
             self.update_task_progress(id_prog_dfs, i+1, task_id=task_id, n_queue=len(queue), depth=max(len(queue[0]['models']), 1), description='  DFS {}'.format(f'{i+1}/{self.max_dfs}'))
@@ -434,7 +435,7 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
                 if acc_next == 1 and acc_prev == acc_next:
                     completed = True
                     break
-                elif acc_next >= acc_prev_max and len(models_temp) < self.max_depth:
+                elif acc_next >= acc_prev_max and (not is_wrong_corrected_pixels or len(models_temp) != 1) and len(models_temp) < self.max_depth and n_repeat_max_acc < 2:
                     queue.append({
                         'models': models_temp + models_temp[-1:],
                         'answer_map': answer_map,
@@ -443,7 +444,7 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
                         'acc_prev_max': acc_prev_max,
                         'n_epochs_trained': n_epochs_trained,
                     })
-                elif acc_next == 1 or acc_next >= acc_prev:
+                elif acc_next == 1 or acc_next >= acc_prev and n_repeat_max_acc < 3:
                     queue.append({
                         'models': models_temp,
                         'answer_map': answer_map,
@@ -483,11 +484,11 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
             total_loss = 0
             y_batch = []
 
-            for x, t in batches_train:
+            for i, (x, t) in enumerate(batches_train):
                 y = x.detach().clone()
-                for model in models:
-                    y = model(y)
-                loss = self.loss_fn(y, t)
+                for depth, model in enumerate(models):
+                    y = model(y, epoch=e, batch_idx=i, return_prob=False if depth == len(models)-1 else True)
+                loss = self.loss_fn(y, t if len(models) != 1 else x)
 
                 opt.zero_grad()
                 loss.backward()
@@ -530,8 +531,8 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
 
         for i, (x, t) in enumerate(batches_test):
             y = x
-            for model in self.models:
-                y = model(y)
+            for depth, model in enumerate(self.models):
+                y = model(y, return_prob=False if depth == len(self.models)-1 else True)
                 ys.append((y, 'Depth {}'.format(depth+1)))
             loss = self.loss_fn(y, t)
             total_loss += loss
