@@ -169,6 +169,7 @@ lightning_logs/
 # Hydra
 outputs/
 !configs/data
+.hydra
 
 # Model
 *.pth
@@ -178,7 +179,7 @@ outputs/
 output/task_visualization/*
 
 # Sub Repository
-arc-dsl/
+repo/
 
 # For MAC
 .DS_Store

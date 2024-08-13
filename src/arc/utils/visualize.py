@@ -81,14 +81,13 @@ def plot_xyt(*images, task_id, titles=['Input', 'Predicted', 'Answer', 'Correct'
     """Plots the input, predicted, and answer pairs of a specified task, using the ARC color scheme."""
     num_img = len(images)
     
-    if num_img > 2 and num_img < 5:
-        images = list(images)
-        images[1], images[2] = images[2], images[1]
-        titles[1], titles[2] = titles[2], titles[1]
-    
     fig, axs = plt.subplots(1, num_img, figsize=(len(images)*3, 3))
     plt.suptitle(f'Task {task_id}', fontsize=20, fontweight='bold', y=0.96)
-    
+
+    # If there's only one image, axs may not be an array
+    if num_img == 1:
+        axs = [axs]  # Make it array
+
     cmap = colors.ListedColormap(COLORS)
     norm = colors.Normalize(vmin=0, vmax=9)
     
@@ -96,6 +95,8 @@ def plot_xyt(*images, task_id, titles=['Input', 'Predicted', 'Answer', 'Correct'
     images = [torch.argmax(image, dim=0) if len(image.shape) > 2 else image for image in images]
 
     for i in range(num_img):
+        if num_img > 2 and num_img < 5:
+            i = 2 if i == 1 else 1 if i == 2 else i
         plot_single_image(images[i], axs[i], titles[i], cmap, norm)
     
     fig.patch.set_linewidth(5)
@@ -106,49 +107,56 @@ def plot_xyt(*images, task_id, titles=['Input', 'Predicted', 'Answer', 'Correct'
     plt.show()
 
 
-def plot_xyts(task_result, title_prefix="Task", subtitles=['Inputs', 'Outputs', 'Answers', 'Corrects']):
+def plot_xyts(task_result, task_id=None, subtitles=['Inputs', 'Outputs', 'Answers', 'Corrects'], savefile=None, test_idx=None):
     """Plots rows of input, predicted, and answer triples for a set of tasks, using the ARC color scheme."""
     num_pairs = len(task_result)
     num_columns = len(task_result[0])
-    
-    if num_columns > 2 and num_columns < 5:
-        task_result = list(task_result)
-        task_result[1], task_result[2] = task_result[2], task_result[1]
-        subtitles[1], subtitles[2] = subtitles[2], subtitles[1]
 
     fig, axs = plt.subplots(num_columns, num_pairs, figsize=(num_columns*6, 10))
+    if task_id is not None:
+        plt.suptitle(f'Task {task_id}', fontsize=20, fontweight='bold', y=0.96)
 
-    task_result = [tuple(image.detach().cpu().squeeze(0).long() if isinstance(image, torch.Tensor) else torch.tensor(image) for image in images) for images in task_result]
+    task_result = [tuple(image.detach().cpu().squeeze(0) if isinstance(image, torch.Tensor) else torch.tensor(image) for image in images) for images in task_result]
     task_result = [tuple(torch.argmax(image, dim=0) if len(image.shape) > 2 else image for image in images) for images in task_result]
 
     # If there's only one task, axs may not be a 2D array
-    if num_pairs == 1:
-        axs = [axs]  # Make it 2D array
+    if num_pairs == 1 and num_columns == 1:
+        axs = [[axs]]
+    elif num_pairs == 1:
+        axs = [[axs_row] for axs_row in axs]
 
     cmap = colors.ListedColormap(COLORS)
-    norm = colors.Normalize(vmin=0, vmax=9)
-    
+    norm = colors.Normalize(vmin=0, vmax=len(COLORS)-1)
+
     for i in range(num_pairs):
         for j in range(num_columns):
-            plot_single_image(task_result[i][j], axs[j][i], f'{title_prefix} {subtitles[j]}' if i == 0 else '', cmap, norm)
-    
+            if num_columns > 2 and num_columns < 5:
+                j = 2 if j == 1 else 1 if j == 2 else j
+            plot_single_image(task_result[i][j], axs[j][i], subtitles[j] if i == 0 else 'Test' if i >= test_idx and j == 0 else '', cmap, norm)
+
     fig.patch.set_linewidth(5)
     fig.patch.set_edgecolor('black')
     fig.patch.set_facecolor('#dddddd')
-    
     plt.tight_layout()
+
+    if savefile:
+        plt.savefig(f'{savefile}.png', bbox_inches='tight')
     plt.show()
 
 
-def plot_xyt_from_json(file_path='./output/test_results.json', titles=['Input', 'Output', 'Answer', 'Correct'], plot_only_correct=False, top_k=2, total=400, verbose=False):
+def plot_xyt_from_json(file_path='./output/test_results.json', titles=['Input', 'Output', 'Answer', 'Correct'], keys_json=['input', 'output', 'target', 'correct_pixels'], plot_only_correct=False, top_k=2, total=400, change_order_1_2=True, verbose=False):
     results = json.load(open(file_path, 'r'))
 
-    exist_label_information = list(results.values())[0][0][0].get('target') is not None
-    assert not plot_only_correct or exist_label_information, 'The results do not contain answer.'
+    exist_label = list(results.values())[0][0][0].get('target') is not None
+    assert not plot_only_correct or exist_label, 'The results do not contain answer.'
     if len(list(results.values())[0][0]) < top_k:
         warnings.warn(f'Top-k is set to {top_k} but the number of trials is {len(list(results.values())[0][0])}, less than {top_k}.')
 
-    if exist_label_information:
+    if exist_label:
+        if change_order_1_2:
+            titles[1], titles[2] = titles[2], titles[1]
+            keys_json[1], keys_json[2] = keys_json[2], keys_json[1]
+
         task_ids_correct = [key for key, task_result in results.items() if \
             all(any(
                 all(all(pixel == 3 for pixel in row) for row in trial['correct_pixels'])
@@ -164,14 +172,14 @@ def plot_xyt_from_json(file_path='./output/test_results.json', titles=['Input', 
 
         for i, trials in enumerate(task_result):
             for j, trial in enumerate(trials):
-                images = [trial[key] for key in ['input', 'output', 'target', 'correct_pixels'] if key in trial]
-                hparams = trial['hparams']
-
                 if j == top_k:
                     break
-                
+
                 if verbose:
+                    hparams = trial['hparams']
                     print(f'Task {task_id} | Test {i+1}: {hparams}')
+
+                images = [trial[key] for key in keys_json if key in trial]
                 plot_xyt(*images, task_id=task_id, titles=titles)
 
 
@@ -249,10 +257,20 @@ def print_image_with_probs(*images):
     print()
 
 
-def visualize_image_using_emoji(*images, titles=['Input', 'Output', 'Answer', 'Correct'], output_file=None):
+def visualize_image_using_emoji(*images, titles=['Input', 'Output', 'Answer', 'Correct'], output_file=None, color_map_emoji=['⬛️', '🟦', '🟥', '🟩', '🟨', '⬜️', '🟪', '🟧', '⏹️ ', '🟫', '◽️'], padding_idx=-1):
     '''
-    ⬛️ = 0, 🟦 = 1, 🟥 = 2, 🟩 = 3, 🟨 = 4, ⬜️ = 5, 🟪 = 6, 🟧 = 7, ⏹️ = 8, 🟫 = 9
+    Parameters:
+        `color_map_emoji`: `list`
+        Defulat: ⬛️ = 0, 🟦 = 1, 🟥 = 2, 🟩 = 3, 🟨 = 4, ⬜️ = 5, 🟪 = 6, 🟧 = 7, ⏹️ = 8, 🟫 = 9, '◽️' = 10
     '''
+
+    def add_space(emoji):
+        if emoji == '◽' and output_file:
+            return '⬛️'
+        elif emoji == '⏹️' and (not output_file or is_ipython):
+            return emoji + ' '
+        else:
+            return emoji
 
     images = [image.squeeze(0).detach().cpu() for image in images]
     images = [torch.argmax(image, dim=0).long() if len(image.shape) > 2 else image for image in images]
@@ -263,7 +281,7 @@ def visualize_image_using_emoji(*images, titles=['Input', 'Output', 'Answer', 'C
     line = ''
     if titles:
         for title, image_width in zip(titles, [image.shape[1] for image in images]):
-            line += title.ljust(image_width * (2 if not output_file else 3)) + '  '
+            line += title.ljust(image_width * 2) + '  '
         line += '\n'
 
     for h in range(n_lines):
@@ -273,29 +291,10 @@ def visualize_image_using_emoji(*images, titles=['Input', 'Output', 'Answer', 'C
                 continue
             for w in range(image.shape[1]):
                 pixel_key = image[h, w].item()
-                if pixel_key == 0:
-                    line += '⬛️'
-                elif pixel_key == 1:
-                    line += '🟦'
-                elif pixel_key == 2:
-                    line += '🟥'
-                elif pixel_key == 3:
-                    line += '🟩'
-                elif pixel_key == 4:
-                    line += '🟨'
-                elif pixel_key == 5:
-                    line += '⬜️'
-                elif pixel_key == 6:
-                    line += '🟪'
-                elif pixel_key == 7:
-                    line += '🟧'
-                elif pixel_key == 8:
-                    line += '⏹️' if is_ipython or output_file else '⏹️ '
-                elif pixel_key == 9:
-                    line += '🟫'
+                if pixel_key < len(color_map_emoji):
+                    line += add_space(color_map_emoji[pixel_key])
                 else:
-                    line += '◽️'
-                line += ' ' if output_file else ''
+                    line += add_space(color_map_emoji[padding_idx])
             line += '  '
         line += '\n' if h != n_lines - 1 else ''
 
