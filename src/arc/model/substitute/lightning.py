@@ -8,7 +8,7 @@ from rich import print
 
 from arc.model.substitute.pixel_each import PixelEachSubstitutor
 from arc.preprocess import one_hot_encode
-from arc.utils.visualize import visualize_image_using_emoji, plot_xyt
+from arc.utils.visualize import visualize_image_using_emoji, plot_xytc
 from arc.utils.print import is_notebook
 
 
@@ -256,7 +256,7 @@ class PixelEachSubstitutorL(LightningModuleBase):
 
             correct_pixels = torch.where(y_decoded == t_decoded, 3, 2)
             if self.is_notebook:
-                plot_xyt(x[0], y[0], t[0], correct_pixels, task_id=task_id)
+                plot_xytc(x[0], y[0], t[0], correct_pixels, task_id=task_id)
             else:
                 visualize_image_using_emoji(x[0], t[0], y[0], correct_pixels, titles=['Input', 'Target', 'Output', 'Correct'])
                 visualize_image_using_emoji(x[0], t[0], y[0], correct_pixels, titles=['Input', 'Target', 'Output', 'Correct'], output_file=self.log_file)
@@ -293,7 +293,7 @@ class PixelEachSubstitutorL(LightningModuleBase):
                 outputs.append(y_decoded[0])
 
             if self.is_notebook:
-                plot_xyt(x[0], y[0], task_id=task_id)
+                plot_xytc(x[0], y[0], task_id=task_id)
             else:
                 visualize_image_using_emoji(x[0], y[0])
 
@@ -556,7 +556,7 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
                 visualize_image_using_emoji(*xytcs, titles=titles, output_file=self.log_file)
 
             if self.is_notebook:
-                plot_xyt(x[0], y[0], t[0], c_decoded, task_id=task_id)
+                plot_xytc(x[0], y[0], t[0], c_decoded, task_id=task_id)
             else:
                 visualize_image_using_emoji(x, t, y, c_decoded, titles=['Input', 'Target', 'Output', 'Correct'])
                 visualize_image_using_emoji(x, t, y, c_decoded, titles=['Input', 'Target', 'Output', 'Correct'], output_file=self.log_file)

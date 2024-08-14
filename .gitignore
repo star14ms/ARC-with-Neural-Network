@@ -183,3 +183,6 @@ repo/
 
 # For MAC
 .DS_Store
+
+# modelviz
+model_viz/

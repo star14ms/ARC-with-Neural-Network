@@ -6,7 +6,7 @@ from rich import print
 
 from arc.model.fill.keep_input import FillerKeepInput
 from arc.model.fill.ignore_color import FillerKeepInputIgnoreColor
-from arc.utils.visualize import plot_xyt, visualize_image_using_emoji
+from arc.utils.visualize import plot_xytc, visualize_image_using_emoji
 
 
 class LightningModuleBase(pl.LightningModule):
@@ -83,7 +83,7 @@ class FillerKeepInputL(LightningModuleBase):
                 # visualize_image_using_emoji(x[0], t[0], y[0], titles=['Input', 'Target', 'Output'])
 
             # if i == total-1: # and (y_origin != t).sum().int() == 0:
-            #     plot_xyt(x_origin, y_origin, t_origin)
+            #     plot_xytc(x_origin, y_origin, t_origin)
 
             if i == total - 1:
                 break
@@ -131,7 +131,7 @@ class FillerKeepInputIgnoreColorL(LightningModuleBase):
                 # x_origin = torch.argmax(x[0].detach().cpu(), dim=0).long() # [H, W]
 
             # if i == total-8 and (y_origin != t.detach().cpu()).sum().int() == 0:
-            #     plot_xyt(x_origin, y_origin, t[0])
+            #     plot_xytc(x_origin, y_origin, t[0])
 
             if i == total - 1:
                 break

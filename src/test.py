@@ -18,7 +18,7 @@ from arc.model import (
     FillerKeepInputConfig,
     FillerKeepInputIgnoreColorConfig
 )
-from arc.utils.visualize import plot_xyt, plot_xyts, visualize_image_using_emoji
+from arc.utils.visualize import plot_xytc, plot_xytc_list, visualize_image_using_emoji
 from arc.preprocess import reconstruct_t_from_one_hot
 from arc.constants import get_challenges_solutions_filepath
 from data import ARCDataset
@@ -74,12 +74,12 @@ def _test(config, model, dataset_train, device, verbose_single):
             correct_pixels = torch.where(y_origin == t_origin, 3, 2)
 
             if verbose_single:
-                plot_xyt(x_origin, y_origin, t_origin, correct_pixels, task_id=key)
+                plot_xytc(x_origin, y_origin, t_origin, correct_pixels, task_id=key)
             else:
                 task_result.append((x_origin, y_origin, t_origin, correct_pixels))
 
         if not verbose_single:
-            plot_xyts(task_result, title_prefix=key)
+            plot_xytc_list(task_result, title_prefix=key)
         print()
 
 

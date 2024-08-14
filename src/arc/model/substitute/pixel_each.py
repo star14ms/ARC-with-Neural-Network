@@ -62,7 +62,8 @@ class PixelVectorExtractor(nn.Module):
         #     x = x[:, :, :-1] + colored_padding
         #     x = x.transpose(1, 2)
 
-        x = x[:, :-1] # [N*H*W, C, L]
+        if self.n_range_search != 0:
+            x = x[:, :-1] # [N*H*W, C, L]
 
         ### TODO: PixelVector = Pixels Located Relatively + Pixels Located Absolutely (363442ee, 63613498, aabf363d) + 3 Pixels with point-symmetric and line-symmetric relationships (3631a71a, 68b16354)
         ### TODO: PixelEachSubstitutorOverTime (045e512c, 22168020, 22eb0ac0, 3bd67248, 508bd3b6, 623ea044), 
@@ -135,9 +136,9 @@ class PixelEachSubstitutor(nn.Module):
         L_dims_encoded = [L_dim] + L_dims_encoded
 
         self.abstractor = PixelVectorExtractor(
+            n_range_search=n_range_search,
             max_width=max_width,
             max_height=max_height,
-            n_range_search=n_range_search,
             pad_n_head=pad_n_head,
             pad_dim_feedforward=pad_dim_feedforward, 
             dropout=dropout,
