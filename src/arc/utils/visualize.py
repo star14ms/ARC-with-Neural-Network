@@ -146,6 +146,8 @@ def plot_xyts(task_result, task_id=None, subtitles=['Inputs', 'Outputs', 'Answer
 
 def plot_xyt_from_json(file_path='./output/test_results.json', titles=['Input', 'Output', 'Answer', 'Correct'], keys_json=['input', 'output', 'target', 'correct_pixels'], plot_only_correct=False, top_k=2, total=400, change_order_1_2=True, verbose=False):
     results = json.load(open(file_path, 'r'))
+    print('Hyperparameters:', results['hparams'])
+    results = results['results']
 
     exist_label = list(results.values())[0][0][0].get('target') is not None
     assert not plot_only_correct or exist_label, 'The results do not contain answer.'
@@ -176,8 +178,7 @@ def plot_xyt_from_json(file_path='./output/test_results.json', titles=['Input', 
                     break
 
                 if verbose:
-                    hparams = trial['hparams']
-                    print(f'Task {task_id} | Test {i+1}: {hparams}')
+                    print(f'Task {task_id} | Test {i+1}')
 
                 images = [trial[key] for key in keys_json if key in trial]
                 plot_xyt(*images, task_id=task_id, titles=titles)

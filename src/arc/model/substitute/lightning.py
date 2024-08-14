@@ -348,7 +348,6 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
         })
 
         self.add_submission(task_id, results)
-        self.test_results['hparams'] = {**self.model_kwargs, 'hyperparams_for_each_trial': self.params_for_each_trial},
 
         n_tasks_correct = 0
         for trials in self.test_results[task_id]:
@@ -621,3 +620,10 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
                 is_wrong_corrected_pixels = True
                 break
         return is_wrong_corrected_pixels
+
+    def on_train_epoch_end(self):
+        super().on_train_epoch_end()
+        self.test_results = {
+            'results': self.test_results,
+            'hparams': {**self.model_kwargs, 'hyperparams_for_each_trial': self.params_for_each_trial},
+        }
