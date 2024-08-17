@@ -20,8 +20,8 @@ params:
   dropout: 0.1
   n_class: 10
 
-  n_trials: 1
-  hyperparams_for_each_trial: [
+  n_trials: 2
+  hyperparams_for_each_cell: [
     {
       n_range_search: 0,
       max_width: 1,

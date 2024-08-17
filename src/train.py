@@ -36,12 +36,12 @@ def train(config: DictConfig, model=None, filter_funcs=None, test=False, return_
     hparams_model = OmegaConf.to_container(config.model.params, resolve=True)
     hparams_train = OmegaConf.to_container(config.train.params, resolve=True)
     max_epochs, batch_size_max, augment_data, lr, save_dir, ckpt_path = \
-        hparams_train.get('max_epochs', None), \
-        hparams_train.get('batch_size_max', None), \
-        hparams_train.get('augment_data', None), \
-        hparams_train.get('lr', None), \
-        hparams_train.get('save_dir', None), \
-        hparams_train.get('ckpt_path', None)
+        hparams_train.get('max_epochs'), \
+        hparams_train.get('batch_size_max'), \
+        hparams_train.get('augment_data'), \
+        hparams_train.get('lr'), \
+        hparams_train.get('save_dir'), \
+        hparams_train.get('ckpt_path')
 
     hparams_data['batch_size_max'] = batch_size_max
     hparams_data['augment_data'] = augment_data
@@ -93,17 +93,17 @@ def train(config: DictConfig, model=None, filter_funcs=None, test=False, return_
     # trainer.save_checkpoint(save_path)
     # print('Model saved to:', save_path)
 
-    # Save the submission to disk (optional)
-    save_path = os.path.join(save_dir, 'submission.json')
-    with open(save_path, 'w') as f: 
-        json.dump(model.submission, f)
-    print("Submission saved to: '{}'".format(save_path))
-
     # Save the test results to disk (optional)
     save_path = os.path.join(save_dir, 'test_results.json')
     with open(save_path, 'w') as f:
         json.dump(model.test_results, f)
     print("Test results saved to: '{}'".format(save_path))
+
+    # Save the submission to disk (optional)
+    save_path = os.path.join(save_dir, 'submission.json')
+    with open(save_path, 'w') as f: 
+        json.dump(model.submission, f)
+    print("Submission saved to: '{}'".format(save_path))
 
     if test:
         test_fn(config, model)

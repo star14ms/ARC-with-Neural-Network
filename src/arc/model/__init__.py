@@ -93,7 +93,7 @@ class PixelEachSubstitutorBaseConfig:
     n_class: int = 10
 
     n_trials: int = 1
-    hyperparams_for_each_trial: List[dict] = tuple()
+    hyperparams_for_each_cell: List[dict] = tuple()
     max_epochs_for_each_task: int = 30
     train_loss_threshold_to_stop: float = 0.01
 

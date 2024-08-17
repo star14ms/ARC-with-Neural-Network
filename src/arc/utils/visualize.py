@@ -197,7 +197,8 @@ def plot_xytc_from_json(file_path='./output/test_results.json', titles=['Input',
                     break
 
                 if verbose:
-                    print(f'Task {task_id} | Test {i+1}')
+                    hparmas_ids = trial['hparams_ids']
+                    print(f'Task {task_id} | Test {i+1} | hparams_ids: {hparmas_ids}')
 
                 images = [trial[key] for key in keys_json if key in trial]
                 plot_xytc(*images, task_id=task_id, titles=titles)

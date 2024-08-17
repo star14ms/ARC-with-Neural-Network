@@ -20,8 +20,8 @@ params:
   dropout: 0.1
   n_class: 10
 
-  n_trials: 0
-  hyperparams_for_each_trial: []
+  n_trials: 2
+  hyperparams_for_each_cell: []
   max_epochs_for_each_task: 100
   train_loss_threshold_to_stop: 0.01
 

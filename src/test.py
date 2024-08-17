@@ -25,7 +25,7 @@ from data import ARCDataset
 
 
 def _test(config, model, dataset_train, device, verbose_single):
-    n_recurrance_feature_extraction = config.test.params.get('n_recurrance_feature_extraction', None)
+    n_recurrance_feature_extraction = config.test.params.get('n_recurrance_feature_extraction')
     kwargs = dict(n_recurrance_feature_extraction=n_recurrance_feature_extraction) if n_recurrance_feature_extraction else {}
 
     for i, (inputs, outputs, inputs_test, outputs_test, key) in enumerate(dataset_train):
@@ -89,9 +89,9 @@ def test(config, filter_funcs=None, model=None):
     hparmas_test = OmegaConf.to_container(config.test.params, resolve=True)
     base_path = hparams_data.pop('base_path', None)
     model_path, augment_data, verbose_single = \
-        hparmas_test.get('model_path', None), \
-        hparmas_test.get('augment_data', None), \
-        hparmas_test.get('verbose_single', None)
+        hparmas_test.get('model_path'), \
+        hparmas_test.get('augment_data'), \
+        hparmas_test.get('verbose_single')
     if filter_funcs:
         hparams_data['filter_funcs'] = filter_funcs
 
