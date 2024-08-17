@@ -4,7 +4,6 @@ params:
   n_range_search: 1
   max_width: 3
   max_height: 3
-  skip_sampler: False # Can solve the f76d97a5
   L_dims_encoded: [9]
   L_dims_decoded: [1]
   pad_class_initial: 0

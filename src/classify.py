@@ -201,21 +201,21 @@ class ARCDataClassifier:
 
 def get_filter_funcs():
     filter_funcs = (
-        ARCDataClassifier.in_data_codes_f(['22168020']),
-        # ARCDataClassifier.in_data_codes_f([
-        #     '4258a5f9', 'ce22a75a', 'b60334d2', 'b1948b0a', 'c8f0f002', 'f76d97a5', 'd90796e8', '25d8a9c8', '0d3d703e', '3aa6fb7a', 'a699fb00', '0ca9ddb6', 'd364b489', '95990924', 
-        # ], reorder=True),
-        # ARCDataClassifier.in_data_codes_f([
-        #     '60b61512', '22233c11', '3e980e27', '72322fa7', '88a10436', '11852cab',
-        #     '0962bcdd', '36d67576', '913fb3ed', '56ff96f3', 'e9614598', 'af902bf9', '928ad970'
-        # ], reorder=True),
-        # ARCDataClassifier.in_data_codes_f([
+
+        ARCDataClassifier.in_data_codes_f([
+            '22168020',
+            # '623ea044', # '3bd67248', # '6e19193c',
+            # '444801d8', 'f1cefba8', 'd4f3cd78', 'aba27056',  # Fluid
+            # 'ea786f4a', 'e40b9e2f',
+        #     '4258a5f9', 'ce22a75a', 'b60334d2', 'b1948b0a', 'c8f0f002', 'f76d97a5', 'd90796e8', '25d8a9c8', '0d3d703e', '3aa6fb7a', 'a699fb00', '0ca9ddb6', 'd364b489', '95990924', # Easy
+        #     '60b61512', '22233c11', '3e980e27', '72322fa7', '88a10436', '11852cab', '0962bcdd', '36d67576', '913fb3ed', '56ff96f3', 'e9614598', 'af902bf9', '928ad970'
+        
         #     '25d8a9c8', '25ff71a9', '3618c87e', '4258a5f9', '42a50994', '4347f46a', '50cb2852', '67385a82', 
         #     '67a423a3', '6e02f1e3', '6f8cd79b', 'a699fb00', 'a79310a0', 'a9f96cdd', 'aedd82e4', 'b6afb2da', 
         #     'bb43febb', 'c8f0f002', 'ce22a75a', 'd511f180', 'b60334d2', 'b1948b0a',  'f76d97a5', 'd90796e8', 
         #     '0d3d703e', '3aa6fb7a', '0ca9ddb6', 'd364b489', '95990924', '54d9e175', '67385a82', '6c434453', 
         #     '913fb3ed',
-        # ], reorder=True),
+        ], reorder=True),
         # ARCDataClassifier.is_same_shape_f(True),
         # ARCDataClassifier.is_shape_size_in_f(start=1, stop=21),
     )

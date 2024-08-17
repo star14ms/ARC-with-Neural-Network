@@ -329,7 +329,7 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
 
     def training_step(self, batches):
         batches_train, batches_test, task_id = batches
-        self.print_and_write('Task ID: [bold white]{}[/bold white]'.format(task_id))
+        self.print_and_write('\nTask ID: [bold white]{}[/bold white]'.format(task_id))
 
         self.no_label = True if len(batches_test[0][1].shape) == 2 else False
 
@@ -347,26 +347,32 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
             'outputs': outputs,
         })
 
-        self.add_submission(task_id, results)
-
-        n_tasks_correct = 0
-        for trials in self.test_results[task_id]:
-            n_tasks_correct += any(all(all(pixel == 3 for pixel in row) for row in trial['correct_pixels']) for trial in trials)
+        if self.current_epoch+1 == self.trainer.max_epochs:
+            self.add_submission(task_id, results)
 
         return {
             'loss': info_train['loss'],
-            'n_tasks_correct': n_tasks_correct,
+            'n_tasks_correct': info['n_tasks_correct'],
             'n_tasks_total': len(batches_test),
         }
 
     def _training_step(self, batches_train, task_id):
-        def __print_one_step_result():
-            for result in results:
-                for x_one, y_one, t_one, c_one in zip(result['x_decoded'], result['y_decoded'], result['t_decoded'], result['c_decoded']):
-                    c_one = torch.where(c_one == 1, 3, 2)
-                    visualize_image_using_emoji(x_one, t_one, y_one, c_one, titles=['Input', 'Target', 'Output', 'Correct'])
-            
-            print('Accuracy: {:.1f}% -> {:.1f}% ({:.1f}) | Input Kept: {} | Depth: {} | {}'.format(acc_prev*100, acc_next*100, acc_prev_max*100, not is_wrong_corrected_pixels, len(models_temp), '▶️'*len(models_temp))) # [_model.id for _model in models_temp]
+        def __print_one_step_result(end='\n'):
+            # for result, c_prev in zip(results, answer_map_prev):
+            #     for x_one, y_one, t_one, c_one, c_prev_one in zip(result['x_decoded'], result['y_decoded'], result['t_decoded'], result['c_decoded'], c_prev):
+            #         c_one = torch.where(c_one == 1, 3, 2)
+            #         c_prev_one = torch.where(c_prev_one == 1, 3, 2)
+            #         visualize_image_using_emoji(x_one, t_one, y_one, c_one, c_prev_one, titles=['Input', 'Target', 'Output', 'Correct', 'Correct Prev'])
+
+            print('Accuracy: {:.1f}% -> {:.1f}% ({:.1f}) | Corrects Kept: {} | Depth: {} {} | {} Epoch'.format(
+                acc_prev*100 if len(models_temp) != 1 else 0.0, 
+                acc_next*100, 
+                acc_prev_max*100, 
+                '[green]T[/green]' if is_corrected_pixels_maintained_next else '[red]F[/red]',
+                len(models_temp), 
+                '▶️'*len(models_temp), # [_model.id for _model in models_temp]
+                n_epoch_trained, 
+            ), end=end)
             # print('Queue:', ' '.join(
             #     ['{}'.format((round(acc.item()*100, 1), [_model.id for _model in _models])) \
             #     for _models, _, _, _, acc, _, _ in queue]
@@ -374,7 +380,9 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
 
         def __build_models():
             nonlocal next_id
-            if len(models) == 0 or i >= 1:
+            if len(models) == 0 or (i >= 1 and new_record): # models[0] should train continuously
+                if len(models) == 0:
+                    print('-'*100)
                 # Create new model
                 varied_kwargs = self.params_for_each_trial[i-1] if i >= 1 else {}
                 model = self.model_class(*self.model_args, **{**self.model_kwargs, **varied_kwargs})
@@ -383,9 +391,13 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
                 models_temp = models + [model]
                 # models_temp = [model] * 3
                 opt = torch.optim.Adam(model.parameters(), lr=self.lr)
-            elif i == 0:
+            elif acc_next == 1 or (i == 0 and new_record):
+                # Lengthen the last model
+                models_temp = models + [models[-1]]
+                opt = opt_prev
+            else:
                 # Continue training
-                models_temp = models 
+                models_temp = models
                 opt = opt_prev
 
             return models_temp, opt
@@ -400,6 +412,9 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
             'acc_prev': accuracy0,
             'acc_prev_max': accuracy0,
             'n_epochs_trained': [],
+            'new_record': False,
+            'is_corrected_pixels_maintained_prev': True,
+            'is_corrected_pixels_maintained': True,
         }
         queue = [checkpoint0]
 
@@ -414,13 +429,16 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
             
             queue = sorted(queue, key=lambda x: x['acc_prev_max'], reverse=True)
             checkpoint = queue.pop(0)
-            models, answer_map_prev, opt_prev, acc_prev, acc_prev_max, n_epochs_trained = \
+            models, answer_map_prev, opt_prev, acc_prev, acc_prev_max, n_epochs_trained, new_record, is_corrected_pixels_maintained_prev, is_corrected_pixels_maintained = \
                 checkpoint.get('models'), \
                 checkpoint.get('answer_map'), \
                 checkpoint.get('opt'), \
                 checkpoint.get('acc_prev'), \
                 checkpoint.get('acc_prev_max'), \
-                checkpoint.get('n_epochs_trained')
+                checkpoint.get('n_epochs_trained'), \
+                checkpoint.get('new_record'), \
+                checkpoint.get('is_corrected_pixels_maintained_prev'), \
+                checkpoint.get('is_corrected_pixels_maintained')
 
             for i in range(self.n_trials + 1):
                 models_temp, opt = __build_models()
@@ -430,8 +448,7 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
                 self.update_task_progress(id_prog_acc, completed=acc_max*100, description=f'  Acc {acc_max*100:.1f}%' if acc_max != 1 else f'  Acc 100%')
 
                 answer_map = [result['c_decoded'] for result in results]
-                is_wrong_corrected_pixels = self._check_corrected_pixels(answer_map_prev, answer_map) # Prvent extension before finding the input
-                # __print_one_step_result()
+                is_corrected_pixels_maintained_next = self._is_corrected_pixels_maintained(answer_map_prev, answer_map) # Prvent extension before finding the input
 
                 if acc_next == acc_prev_max:
                     n_repeat_max_acc += 1
@@ -442,15 +459,17 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
 
                 if acc_next == 1 and acc_prev == acc_next:
                     completed = True
-                    break
-                elif acc_next >= acc_prev_max and not is_wrong_corrected_pixels and len(models_temp) < self.max_depth and n_repeat_max_acc < 2:
+                elif acc_next >= acc_prev_max and is_corrected_pixels_maintained_next and len(models_temp) < self.max_depth and n_repeat_max_acc < 2:
                     queue.append({
-                        'models': models_temp + models_temp[-1:],
+                        'models': models_temp,
                         'answer_map': answer_map,
                         'opt': opt,
                         'acc_prev': acc_next,
                         'acc_prev_max': acc_prev_max,
                         'n_epochs_trained': n_epochs_trained,
+                        'new_record': True,
+                        'is_corrected_pixels_maintained_prev': is_corrected_pixels_maintained,
+                        'is_corrected_pixels_maintained': is_corrected_pixels_maintained_next,
                     })
                 elif acc_next == 1 or (acc_next >= acc_prev and n_repeat_max_acc < 3):
                     queue.append({
@@ -460,18 +479,28 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
                         'acc_prev': acc_next,
                         'acc_prev_max': acc_prev_max,
                         'n_epochs_trained': n_epochs_trained,
+                        'new_record': False,
+                        'is_corrected_pixels_maintained_prev': is_corrected_pixels_maintained,
+                        'is_corrected_pixels_maintained': is_corrected_pixels_maintained_next,
                     })
+                else:
+                    n_repeat_max_acc = 0
+                    n_epochs_trained = []
+
+                __print_one_step_result(end='\n' + ('-'*100 if len(queue) == 0 else ''))
+
+                if completed:
+                    break
 
             if len(queue) == 0:
-                # print('-'*100)
                 queue.append(checkpoint0)
             if completed:
                 break
 
         self.progress.progress.remove_task(id_prog_dfs)
         self.progress.progress.remove_task(id_prog_acc)
-        self.models = models
-        # print('N Epochs Trained:', n_epochs_trained, len(models))
+        self.models = models_temp
+        # print('N Epochs Trained:', n_epochs_trained, 'N Recursion', len(models_temp))
 
         return {
             'loss': total_loss,
@@ -517,7 +546,7 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
 
             acc_next = self.get_avg_accuracy(zip(y_batch, t_batch))
 
-            if acc_next == 1 or (acc_prev < acc_next and len(models) < self.max_depth):
+            if acc_next == 1 or total_loss < 0.0001 or (acc_prev < acc_next and len(models) < self.max_depth): # len(models) > 1 and models[-1].id == models[-2].id
                 break
             
             self.update_task_progress(id_prog_e, e+1, loss=loss, description=f'Epoch {e+1}/{self.max_epochs_for_each_task}')
@@ -553,6 +582,7 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
             for xytc_batch in xytc_batches:
                 titles = [title for _, title in xytc_batch]
                 xytcs = [xytc for xytc, _ in xytc_batch]
+                visualize_image_using_emoji(*xytcs, titles=titles)
                 visualize_image_using_emoji(*xytcs, titles=titles, output_file=self.log_file)
 
             if self.is_notebook:
@@ -572,7 +602,8 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
                 i+1, '🟩' if n_correct == n_pixels else '🟥', n_correct/n_pixels*100, n_correct, n_pixels, 
             ))
 
-        self.test_results[task_id].append(task_result)
+        if self.trainer.current_epoch+1 == self.trainer.max_epochs:
+            self.test_results[task_id].append(task_result)
 
         return {
             'loss': total_loss, 
@@ -613,17 +644,16 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
         return results
 
     @staticmethod
-    def _check_corrected_pixels(answer_map_prev, answer_map):
-        is_wrong_corrected_pixels = False
+    def _is_corrected_pixels_maintained(answer_map_prev, answer_map):
         for correct_previous_batch, correct_current_batch in zip(answer_map_prev, answer_map):
             if torch.any((correct_previous_batch - correct_current_batch) > 0):
-                is_wrong_corrected_pixels = True
-                break
-        return is_wrong_corrected_pixels
+                return False
+        return True
 
     def on_train_epoch_end(self):
         super().on_train_epoch_end()
-        self.test_results = {
-            'results': self.test_results,
-            'hparams': {**self.model_kwargs, 'hyperparams_for_each_trial': self.params_for_each_trial},
-        }
+        if self.trainer.current_epoch+1 == self.trainer.max_epochs:
+            self.test_results = {
+                'results': self.test_results,
+                'hparams': {**self.model_kwargs, 'hyperparams_for_each_trial': self.params_for_each_trial},
+            }

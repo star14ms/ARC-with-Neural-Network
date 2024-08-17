@@ -72,7 +72,7 @@ class PixelEachSubstitutorConfig:
     n_range_search: int = 1
     max_width: int = 3
     max_height: int = 3
-    skip_sampler: bool = False
+    C_dims_encoded: List[int] = (2,)
     L_dims_encoded: List[int] = (9,)
     L_dims_decoded: List[int] = (1,)
     pad_class_initial: int = 0

@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from arc.utils.visualize import visualize_image_using_emoji
+from arc.model.substitute.cross_attn import MultiheadCrossAttentionLayer
 
 
 class PixelVectorExtractor(nn.Module):
@@ -13,11 +13,11 @@ class PixelVectorExtractor(nn.Module):
         self.max_height = max_height
         self.pad_class_initial = pad_class_initial
 
-        # self.attn_C = nn.TransformerEncoder(
-        #     nn.TransformerEncoderLayer(n_class+1, pad_n_head if pad_n_head is not None else n_class+1, pad_dim_feedforward, dropout=dropout, batch_first=True, bias=bias),
-        #     num_layers=pad_num_layers,
-        #     enable_nested_tensor=False,
-        # )
+        self.attn_C = nn.TransformerEncoder(
+            nn.TransformerEncoderLayer(n_class+1, pad_n_head if pad_n_head is not None else n_class+1, pad_dim_feedforward, dropout=dropout, batch_first=True, bias=bias),
+            num_layers=pad_num_layers,
+            enable_nested_tensor=False,
+        )
 
     def forward(self, x):
         N, C, H, W = x.shape
@@ -52,28 +52,37 @@ class PixelVectorExtractor(nn.Module):
         x = x_max.view(N*H*W, C, -1)
 
         # Predict Padding Colors
-        # if self.n_range_search != 0:
-        #     x = x.transpose(1, 2)
-        #     mask_to_inf = (x == 0).all(dim=2)
-        #     mask_to_0 = (x[:, :, -1:] == 1)
-        #     colored_padding = self.attn_C(x, src_key_padding_mask=mask_to_inf) # [L, C+1] <- [L, C+1]
-        #     colored_padding = colored_padding[:, :, :-1].softmax(dim=2)
-        #     colored_padding = colored_padding * mask_to_0
-        #     x = x[:, :, :-1] + colored_padding
-        #     x = x.transpose(1, 2)
-
         if self.n_range_search != 0:
-            x = x[:, :-1] # [N*H*W, C, L]
+            x = x.transpose(1, 2)
+            mask_to_inf = (x == 0).all(dim=2)
+            mask_to_0 = (x[:, :, -1:] == 1)
+            colored_padding = self.attn_C(x, src_key_padding_mask=mask_to_inf) # [L, C+1] <- [L, C+1]
+            colored_padding = colored_padding[:, :, :-1].softmax(dim=2)
+            colored_padding = colored_padding * mask_to_0
+            x = x[:, :, :-1] + colored_padding
+            x = x.transpose(1, 2)
+            C = x.shape[1]
+
+        # if self.n_range_search != 0:
+        #     x = x[:, :-1] # [N*H*W, C, L]
+        #     C = x.shape[1]
 
         ### TODO: PixelVector = Pixels Located Relatively + Pixels Located Absolutely (363442ee, 63613498, aabf363d) + 3 Pixels with point-symmetric and line-symmetric relationships (3631a71a, 68b16354)
         ### TODO: PixelEachSubstitutorOverTime (045e512c, 22168020, 22eb0ac0, 3bd67248, 508bd3b6, 623ea044), 
 
-        return x
+        return x.view(N*H*W, C, HL, WL)
 
 
-class RelatedPixelSampler(nn.Module): 
-    def __init__(self, L_dims_encoded, bias=False):
+class ColorLocationEncoder(nn.Module): 
+    def __init__(self, C_dims_encoded, L_dims_encoded, bias=False):
         super().__init__()
+        L_dim = L_dims_encoded[0]
+        
+        self.attn_V_self = nn.TransformerEncoder(
+            nn.TransformerEncoderLayer(L_dim, L_dim, 1, dropout=0.1, batch_first=True, bias=bias),
+            num_layers=1,
+            enable_nested_tensor=False,
+        )
 
         self.ff_L = nn.Sequential()
         for i in range(len(L_dims_encoded)-1):
@@ -81,19 +90,39 @@ class RelatedPixelSampler(nn.Module):
             if i != len(L_dims_encoded)-2:
                 self.ff_L.add_module(f'relu_{i}', nn.ReLU())
 
+        self.ff_C = nn.Sequential()
+        for i in range(len(C_dims_encoded)-1):
+            self.ff_C.add_module(f'linear_{i}', nn.Linear(C_dims_encoded[i], C_dims_encoded[i+1], bias=bias))
+            if i != len(C_dims_encoded)-2:
+                self.ff_C.add_module(f'relu_{i}', nn.ReLU())
+
     def forward(self, x):
-        NS, C, L = x.shape
+        NS, C, LH, LW = x.shape
 
-        # Encode Locations
-        x = self.ff_L(x.reshape(NS*C, L)).reshape(NS, C, -1) # [N*S*C, L]: 2. Location Encoding
+        # In     Out
+        # 🔳🔳🔳  🟦🟦🟦
+        # 🔳🔳🟩  🟦🟦🟨
+        # 🔳🟩🟩  🟦🟨🟨
 
-        return x
+        # 🔳🔳🔳  🟦🟦🟦 
+        # 🔳🔳🟧  🟦🟦🟦 
+        # 🔳🟩🟩  🟦🟨🟨 
+
+        # 1. Encode Colors depending on Location
+        x = x.view(NS, C, LH*LW)
+        x_mem = self.attn_V_self(x) # [C, L] < [C, L] # (🟦 -> 🟧)
+        x_mem = self.ff_C(x_mem.transpose(1, 2)).transpose(1, 2) # [L, C] -> [L, VC]
+        mem = F.softmax(x_mem, dim=1) # [VCp, L]
+
+        VC = mem.shape[1]
+        mem = mem.reshape(NS, VC, LH*LW)
+
+        return mem, x_mem
 
 
 class Reasoner(nn.Module):
-    def __init__(self, VL_dim, L_dims_decoded, L_num_layers=6, L_n_head=None, L_dim_feedforward=1, C_num_layers=1, C_n_head=None, C_dim_feedforward=1, dropout=0.1, bias=False, n_class=10):
+    def __init__(self, VC_dim, VL_dim, L_num_layers=1, L_n_head=None, L_dim_feedforward=1, C_num_layers=1, C_n_head=None, C_dim_feedforward=1, dropout=0.1, bias=False):
         super().__init__()
-        L_dims_decoded =  [VL_dim] + L_dims_decoded
 
         self.attn_VL_self = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(VL_dim, L_n_head if L_n_head else VL_dim, L_dim_feedforward, dropout=dropout, batch_first=True, bias=bias),
@@ -101,39 +130,75 @@ class Reasoner(nn.Module):
             enable_nested_tensor=False,
         )
         self.attn_VC_self = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(n_class, C_n_head if C_n_head else n_class, C_dim_feedforward, dropout=dropout, batch_first=True, bias=bias),
+            nn.TransformerEncoderLayer(VC_dim, C_n_head if C_n_head else VC_dim, C_dim_feedforward, dropout=dropout, batch_first=True, bias=bias),
             num_layers=C_num_layers,
             enable_nested_tensor=False,
         )
 
-        self.decoder_VL = nn.Sequential()
+    def forward(self, mem):
+        NS, VC, VL = mem.shape
+
+        # In     Out
+        # 🟦🟦🟦  🟦🟦🟦
+        # 🟦🟦🟨  🟦🟨🟨
+        # 🟦🟨🟨  🟦🟨🟨
+        
+        # 🟦🟦🟦  🟦🟦🟦
+        # 🟦🟦🟦  🟦🟦🟦
+        # 🟦🟨🟨  🟦🟨🟨
+
+        # 1. Attention Across Location and Color
+        mem = self.attn_VL_self(mem) # [VC, VL] < [VC, VL]
+        mem = self.attn_VC_self(mem.transpose(1, 2)).transpose(1, 2)  # [VL, VC] < [VL, VC]
+
+        # 2. Determine Encoded Output Class
+        mem = F.softmax(mem, dim=1) # [VCp, VL]
+
+        return mem
+
+
+class ColorLocationDecoder(nn.Module):
+    def __init__(self, L_dim, L_dims_decoded, L_dim_feedforward=1, C_dim_feedforward=1, dropout=0.1, bias=False):
+        super().__init__()
+
+        self.attn_VC_L =  MultiheadCrossAttentionLayer(L_dim, L_dim, L_dim_feedforward, dropout=dropout, batch_first=True, bias=bias)
+        self.attn_C_L =  MultiheadCrossAttentionLayer(L_dim, L_dim, C_dim_feedforward,  dropout=dropout, batch_first=True, bias=bias)
+
+        self.decoder_L = nn.Sequential()
         for i in range(len(L_dims_decoded)-1):
-            self.decoder_VL.add_module(f'linear_{i}', nn.Linear(L_dims_decoded[i], L_dims_decoded[i+1], bias=bias))
+            self.decoder_L.add_module(f'linear_{i}', nn.Linear(L_dims_decoded[i], L_dims_decoded[i+1], bias=bias))
             if i != len(L_dims_decoded)-2:
-                self.decoder_VL.add_module(f'relu_{i}', nn.ReLU())
+                self.decoder_L.add_module(f'relu_{i}', nn.ReLU())
 
-    def forward(self, x):
-        NS, VC, VL = x.shape
+    def forward(self, x, mem, x_mem):
+        NS, C, HL, WL = x.shape
 
-        # 1. Attention Across Vectors and Classify
-        x = self.attn_VL_self(x) # [VC, VL] <- [VC, VL]
-        x = self.attn_VC_self(x.transpose(1, 2)).transpose(1, 2)  # [VL, VC] <- [VL, VC]
+        # In     Out
+        # 🟦🟦🟦  🔳🔳🔳
+        # 🟦🟨🟨  🔳🟩🟩
+        # 🟦🟨🟨  🔳🟩🟩
+        
+        # 🟦🟦🟦  🔳🔳🔳
+        # 🟦🟦🟦  🔳🔳🟧
+        # 🟦🟨🟨  🔳🟩🟩 
+        # [VC, L] -> [C, L]
 
-        # 2. Determine Output Class
-        x = x.reshape(NS*VC, VL)
-        x = self.decoder_VL(x) # [NS*VC, 1]
-        x = x.view(NS, VC, -1)
+        # 3. Decode Color
+        x = x.view(NS, C, HL*WL)
+        x_mem = self.attn_VC_L(x_mem, mem) # [C, L] < [VC, L]
+        y = self.attn_C_L(x, x_mem) # [C, L] < [C, L] # (🟦 -> 🟧)
+        y = self.decoder_L(y) # [C, L] -> [C, 1]
 
-        return x
-
+        return y
 
 class PixelEachSubstitutor(nn.Module):
-    def __init__(self, n_range_search=-1, max_width=61, max_height=61, L_dims_encoded=[512, 128, 64], L_dims_decoded=[32, 8, 1], pad_class_initial=0, pad_num_layers=1, pad_n_head=None, pad_dim_feedforward=1, skip_sampler=False, L_num_layers=6, L_n_head=None, L_dim_feedforward=1, C_num_layers=1, C_n_head=None, C_dim_feedforward=1, dropout=0.1, n_class=10):
+    def __init__(self, n_range_search=-1, max_width=61, max_height=61, C_dims_encoded=[2], L_dims_encoded=[9], L_dims_decoded=[1], pad_class_initial=0, pad_num_layers=1, pad_n_head=None, pad_dim_feedforward=1, L_num_layers=6, L_n_head=None, L_dim_feedforward=1, C_num_layers=1, C_n_head=None, C_dim_feedforward=1, dropout=0.1, n_class=10):
         super().__init__()
         assert n_range_search != -1 and max_width >= 1 + 2*n_range_search and max_height >= 1 + 2*n_range_search
-        self.skip_sampler = skip_sampler
         L_dim = max_width * max_height
+        C_dims_encoded = [n_class] + C_dims_encoded
         L_dims_encoded = [L_dim] + L_dims_encoded
+        L_dims_decoded =  [L_dims_encoded[-1]] + L_dims_decoded
 
         self.abstractor = PixelVectorExtractor(
             n_range_search=n_range_search,
@@ -148,14 +213,15 @@ class PixelEachSubstitutor(nn.Module):
             n_class=n_class,
         )
 
-        self.pixel_sampler = RelatedPixelSampler(
+        self.encoder = ColorLocationEncoder(
+            C_dims_encoded=C_dims_encoded,
             L_dims_encoded=L_dims_encoded,
             bias=False,
         )
 
         self.reasoner = Reasoner(
+            VC_dim=C_dims_encoded[-1],
             VL_dim=L_dims_encoded[-1],
-            L_dims_decoded=L_dims_decoded, 
             L_num_layers=L_num_layers,
             L_n_head=L_n_head,
             L_dim_feedforward=L_dim_feedforward,
@@ -164,15 +230,35 @@ class PixelEachSubstitutor(nn.Module):
             C_dim_feedforward=C_dim_feedforward,
             dropout=dropout,
             bias=False,
-            n_class=n_class,
+        )
+        
+        self.decoder = ColorLocationDecoder(
+            L_dim=L_dim,
+            L_dims_decoded=L_dims_decoded,
+            L_dim_feedforward=L_dim_feedforward,
+            C_dim_feedforward=C_dim_feedforward,
+            dropout=dropout,
+            bias=False,
         )
 
     def forward(self, x, return_prob=False, **kwargs):
         N, C, H, W = x.shape
 
+        # Task: 22168020
+        # In     Encode  Reason  Decode
+        # 🔳🔳🔳  🟦🟦🟦  🟦🟦🟦  🔳🔳🔳
+        # 🔳🔳🟩  🟦🟦🟨  🟦🟨🟨  🔳🟩🟩
+        # 🔳🟩🟩  🟦🟨🟨  🟦🟨🟨  🔳🟩🟩
+        
+        # 🔳🔳🔳  🟦🟦🟦  🟦🟦🟦  🔳🔳🔳
+        # 🔳🔳🟧  🟦🟦🟦  🟦🟦🟦  🔳🔳🟧
+        # 🔳🟩🟩  🟦🟨🟨  🟦🟨🟨  🔳🟩🟩 
+
         x = self.abstractor(x)
-        x = self.pixel_sampler(x) if not self.skip_sampler else x
-        y = self.reasoner(x)
+        mem, x_mem = self.encoder(x)
+        mem = self.reasoner(mem)
+        y = self.decoder(x, mem, x_mem)
+
         y = y.view(N, H, W, C).permute(0, 3, 1, 2) # [N, C, H, W]
 
         if return_prob:
