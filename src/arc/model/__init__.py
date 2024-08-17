@@ -11,13 +11,17 @@ def get_model_class(model_name: str):
     from arc.model.substitute.lightning import (
         PixelEachSubstitutorL,
         PixelEachSubstitutorRepeatL,
+        PixelEachSubstitutorNonColorEncodingL,
+        PixelEachSubstitutorRepeatNonColorEncodingL,
     )
 
     model_classes = [
         FillerKeepInputL,
         FillerKeepInputIgnoreColorL,
         PixelEachSubstitutorL,
+        PixelEachSubstitutorNonColorEncodingL,
         PixelEachSubstitutorRepeatL,
+        PixelEachSubstitutorRepeatNonColorEncodingL,
     ]
 
     for model_class in model_classes:
@@ -68,11 +72,11 @@ class FillerKeepInputIgnoreColorConfig:
     reduced_channels_decoder: List[int] = (128, 32)
 
 @dataclass
-class PixelEachSubstitutorConfig:
+class PixelEachSubstitutorBaseConfig:
     n_range_search: int = 1
     max_width: int = 3
     max_height: int = 3
-    C_dims_encoded: List[int] = (2,)
+    
     L_dims_encoded: List[int] = (9,)
     L_dims_decoded: List[int] = (1,)
     pad_class_initial: int = 0
@@ -81,7 +85,7 @@ class PixelEachSubstitutorConfig:
     pad_num_layers: int = 4
     L_n_head: int | None = None
     L_dim_feedforward: int = 1
-    L_num_layers: int = 6
+    L_num_layers: int = 1
     C_n_head: int | None = None
     C_dim_feedforward: int = 1
     C_num_layers: int = 1
@@ -94,7 +98,22 @@ class PixelEachSubstitutorConfig:
     train_loss_threshold_to_stop: float = 0.01
 
 @dataclass
-class PixelEachSubstitutorRepeatConfig(PixelEachSubstitutorConfig):
-    max_dfs: int = 30
+class PixelEachSubstitutorRepeatConfig(PixelEachSubstitutorBaseConfig):
+    max_AFS: int = 30
     max_queue: int = 20
     max_depth: int = 4
+
+
+class PixelEachSubstitutorConfig(PixelEachSubstitutorBaseConfig):
+    C_dims_encoded: List[int] = (2,)
+    
+class PixelEachSubstitutorRepeatConfig(PixelEachSubstitutorRepeatConfig):
+    C_dims_encoded: List[int] = (2,)
+
+class PixelEachSubstitutorNonColorEncodingConfig(PixelEachSubstitutorBaseConfig):
+    encode_location: bool = True
+    L_dims_encoded: List[int] = [32, 16]
+
+class PixelEachSubstitutorRepeatNonColorEncodingConfig(PixelEachSubstitutorRepeatConfig):
+    encode_location: bool = True
+    L_dims_encoded: List[int] = [32, 16]

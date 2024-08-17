@@ -6,7 +6,8 @@ from collections import defaultdict
 import os
 from rich import print
 
-from arc.model.substitute.pixel_each import PixelEachSubstitutor
+from arc.model.substitute.base import PixelEachSubstitutorNonColorEncoding
+from arc.model.substitute.color_encode import PixelEachSubstitutor
 from arc.preprocess import one_hot_encode
 from arc.utils.visualize import visualize_image_using_emoji, plot_xytc
 from arc.utils.print import is_notebook
@@ -142,11 +143,10 @@ class LightningModuleBase(pl.LightningModule):
                 print(log, file=f)
 
 
-class PixelEachSubstitutorL(LightningModuleBase):
-    def __init__(self, lr=0.001, model=None, n_trials=5, save_dir=None, hyperparams_for_each_trial=[], max_epochs_for_each_task=300, train_loss_threshold_to_stop=0.01, *args, **kwargs):
+class PixelEachSubstitutorBase(LightningModuleBase):
+    def __init__(self, lr=0.001, n_trials=5, save_dir=None, hyperparams_for_each_trial=[], max_epochs_for_each_task=300, train_loss_threshold_to_stop=0.01, *args, **kwargs):
         super().__init__(lr=lr, save_dir=save_dir, *args, **kwargs)
 
-        self.model_class = model if model is not None else PixelEachSubstitutor
         self.model = self.model_class(*args, **kwargs)
         self.model_args = args
         self.model_kwargs = kwargs
@@ -320,10 +320,10 @@ class PixelEachSubstitutorL(LightningModuleBase):
         return y_decoded, t_decoded, n_correct, n_pixels
 
 
-class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
-    def __init__(self, max_dfs=200, max_queue=20, max_depth=4, *args, **kwargs):
+class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
+    def __init__(self, max_AFS=200, max_queue=20, max_depth=4, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.max_dfs = max_dfs
+        self.max_AFS = max_AFS
         self.max_queue = max_queue
         self.max_depth = max_depth
 
@@ -419,13 +419,13 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
         queue = [checkpoint0]
 
         id_prog_acc = self.progress._add_task(100, '  Acc {}'.format('0%'))
-        id_prog_dfs = self.progress._add_task(self.max_dfs, '  DFS {}'.format(f'0/{self.max_dfs}'))
+        id_prog_afs = self.progress._add_task(self.max_AFS, '  AFS {}'.format(f'0/{self.max_AFS}'))
         next_id = 0
         completed = False
         n_repeat_max_acc = 0
 
-        for i in range(self.max_dfs): # DFS
-            self.update_task_progress(id_prog_dfs, i+1, task_id=task_id, n_queue=len(queue), depth=max(len(queue[0]['models']), 1), description='  DFS {}'.format(f'{i+1}/{self.max_dfs}'))
+        for i in range(self.max_AFS): # AFS: Accuracy First Search
+            self.update_task_progress(id_prog_afs, i+1, task_id=task_id, n_queue=len(queue), depth=max(len(queue[0]['models']), 1), description='  AFS {}'.format(f'{i+1}/{self.max_AFS}'))
             
             queue = sorted(queue, key=lambda x: x['acc_prev_max'], reverse=True)
             checkpoint = queue.pop(0)
@@ -497,7 +497,7 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
             if completed:
                 break
 
-        self.progress.progress.remove_task(id_prog_dfs)
+        self.progress.progress.remove_task(id_prog_afs)
         self.progress.progress.remove_task(id_prog_acc)
         self.models = models_temp
         # print('N Epochs Trained:', n_epochs_trained, 'N Recursion', len(models_temp))
@@ -657,3 +657,31 @@ class PixelEachSubstitutorRepeatL(PixelEachSubstitutorL):
                 'results': self.test_results,
                 'hparams': {**self.model_kwargs, 'hyperparams_for_each_trial': self.params_for_each_trial},
             }
+
+
+class PixelEachSubstitutorL(PixelEachSubstitutorBase):
+    def __init__(self, model=None, *args, **kwargs):
+        self.model_class = model if model is not None else PixelEachSubstitutor
+
+        super().__init__(*args, **kwargs)
+
+
+class PixelEachSubstitutorRepeatL(PixelEachSubstitutorRepeatBase):
+    def __init__(self, model=None, *args, **kwargs):
+        self.model_class = model if model is not None else PixelEachSubstitutor
+
+        super().__init__(*args, **kwargs)
+
+
+class PixelEachSubstitutorNonColorEncodingL(PixelEachSubstitutorBase):
+    def __init__(self, model=None, *args, **kwargs):
+        self.model_class = model if model is not None else PixelEachSubstitutorNonColorEncoding
+
+        super().__init__(*args, **kwargs)
+
+
+class PixelEachSubstitutorRepeatNonColorEncodingL(PixelEachSubstitutorRepeatBase):
+    def __init__(self, model=None, *args, **kwargs):
+        self.model_class = model if model is not None else PixelEachSubstitutorNonColorEncoding
+
+        super().__init__(*args, **kwargs)

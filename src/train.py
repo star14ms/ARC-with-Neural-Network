@@ -23,6 +23,8 @@ from arc.model import (
     FillerKeepInputIgnoreColorConfig,
     PixelEachSubstitutorConfig,
     PixelEachSubstitutorRepeatConfig,
+    PixelEachSubstitutorNonColorEncodingConfig,
+    PixelEachSubstitutorRepeatNonColorEncodingConfig,
 )
 from arc.utils.lightning_custom import TrainerCustom, RichProgressBarCustom
 from data import ARCDataModule
@@ -118,6 +120,9 @@ cs.store(group="model", name="base_model_FillerKeepInput", node=FillerKeepInputC
 cs.store(group="model", name="base_model_FillerKeepInputIgnoreColor", node=FillerKeepInputIgnoreColorConfig, package="model")
 cs.store(group="model", name="base_model_PixelEachSubstitutor", node=PixelEachSubstitutorConfig, package="model")
 cs.store(group="model", name="base_model_PixelEachSubstitutorRepeat", node=PixelEachSubstitutorRepeatConfig, package="model")
+cs.store(group="model", name="base_model_PixelEachSubstitutorNonColorEncoding", node=PixelEachSubstitutorNonColorEncodingConfig, package="model")
+cs.store(group="model", name="base_model_PixelEachSubstitutorRepeatNonColorEncoding", node=PixelEachSubstitutorRepeatNonColorEncodingConfig, package="model")
+
 
 @hydra.main(config_path=os.path.join('..', "configs"), config_name="train", version_base=None)
 def main(config: DictConfig) -> None:
