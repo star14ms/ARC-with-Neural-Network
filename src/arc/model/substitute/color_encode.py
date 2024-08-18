@@ -43,7 +43,7 @@ class ColorLocationEncoder(nn.Module):
 
         # 1. Encode Colors depending on Location
         x = x.view(NS, C, LH*LW)
-        x_mem = self.attn_V_self(x) # [C, L] < [C, L] # (🟦 -> 🟧)
+        x_mem = self.attn_V_self(x) # [C, L] < [C, L] # (🟧 -> 🟦)
         x_mem = self.ff_C(x_mem.transpose(1, 2)).transpose(1, 2) # [L, C] -> [L, VC]
         mem = F.softmax(x_mem, dim=1) # [VCp, L]
 
@@ -80,11 +80,11 @@ class Reasoner(nn.Module):
         # 🟦🟦🟦  🟦🟦🟦
         # 🟦🟨🟨  🟦🟨🟨
 
-        # 1. Attention Across Location and Color
+        # 2. Attention Across Location and Color
         mem = self.attn_VL_self(mem) # [VC, VL] < [VC, VL]
         mem = self.attn_VC_self(mem.transpose(1, 2)).transpose(1, 2)  # [VL, VC] < [VL, VC]
 
-        # 2. Determine Encoded Output Class
+        # 3. Determine Encoded Output Class
         mem = F.softmax(mem, dim=1) # [VCp, VL]
 
         return mem
@@ -97,11 +97,11 @@ class ColorLocationDecoder(nn.Module):
         self.attn_VC_L =  MultiheadCrossAttentionLayer(L_dim, L_dim, L_dim_feedforward, dropout=dropout, batch_first=True, bias=bias)
         self.attn_C_L =  MultiheadCrossAttentionLayer(L_dim, L_dim, C_dim_feedforward,  dropout=dropout, batch_first=True, bias=bias)
 
-        self.decoder_L = nn.Sequential()
+        self.ff_L = nn.Sequential()
         for i in range(len(L_dims_decoded)-1):
-            self.decoder_L.add_module(f'linear_{i}', nn.Linear(L_dims_decoded[i], L_dims_decoded[i+1], bias=bias))
+            self.ff_L.add_module(f'linear_{i}', nn.Linear(L_dims_decoded[i], L_dims_decoded[i+1], bias=bias))
             if i != len(L_dims_decoded)-2:
-                self.decoder_L.add_module(f'relu_{i}', nn.ReLU())
+                self.ff_L.add_module(f'relu_{i}', nn.ReLU())
 
     def forward(self, x, mem, x_mem):
         NS, C, HL, WL = x.shape
@@ -116,11 +116,11 @@ class ColorLocationDecoder(nn.Module):
         # 🟦🟨🟨  🔳🟩🟩 
         # [VC, L] -> [C, L]
 
-        # 3. Decode Color
+        # 4. Decode Color
         x = x.view(NS, C, HL*WL)
         x_mem = self.attn_VC_L(x_mem, mem) # [C, L] < [VC, L]
         y = self.attn_C_L(x, x_mem) # [C, L] < [C, L] # (🟦 -> 🟧)
-        y = self.decoder_L(y) # [C, L] -> [C, 1]
+        y = self.ff_L(y) # [C, L] -> [C, 1]
 
         return y
 
@@ -179,7 +179,7 @@ class PixelEachSubstitutor(nn.Module):
         N, C, H, W = x.shape
 
         # Task: 22168020
-        # In     Encode  Reason  Decode
+        # Input  Encode Solve  Decode
         # 🔳🔳🔳  🟦🟦🟦  🟦🟦🟦  🔳🔳🔳
         # 🔳🔳🟩  🟦🟦🟨  🟦🟨🟨  🔳🟩🟩
         # 🔳🟩🟩  🟦🟨🟨  🟦🟨🟨  🔳🟩🟩

@@ -26,12 +26,14 @@ class LightningModuleBase(pl.LightningModule):
         self.log_file = self.save_dir + '/train.log' if save_dir is not None else None
 
         self.n_tasks_correct_in_epoch = 0
-        self.n_tasks_total_in_epoch = 0
-        self.n_continuous_epoch_no_pixel_wrong = 0
+        self.n_tasks_total = 0
+        self.n_trials_correct_in_epoch = 0
+        self.n_trials_total_in_epoch = 0
+        # self.n_continuous_epoch_no_pixel_wrong = 0
 
         self.automatic_optimization = False
         self.is_notebook = is_notebook()
-  
+
     def forward(self, inputs, *args, **kwargs):
         # In Lightning, forward defines the prediction/inference actions
         return self.model(inputs, *args, **kwargs)
@@ -56,18 +58,24 @@ class LightningModuleBase(pl.LightningModule):
 
         if self.no_label:
             return out
-        self.n_tasks_correct_in_epoch += out['n_tasks_correct']
-        self.n_tasks_total_in_epoch += out['n_tasks_total']
+
+        self.n_tasks_correct_in_epoch += out['is_task_correct']
+        self.n_trials_correct_in_epoch += out['n_trials_correct']
+        self.n_trials_total_in_epoch += out['n_trials_total']
+
         return out
 
     def on_train_epoch_end(self):
         if self.no_label:
             return
-        self.print_and_write('Epoch {} | Accuracy: {:>5.1f}% Tasks ({}/{})'.format(
+        self.print_and_write('Epoch {} | Accuracy: {:>5.1f}% Tasks ({}/{}), {:>5.1f}% Trials ({}/{})'.format(
             self.current_epoch+1, 
-            self.n_tasks_correct_in_epoch / self.n_tasks_total_in_epoch * 100,
+            self.n_tasks_correct_in_epoch / self.n_tasks_total * 100,
             self.n_tasks_correct_in_epoch,
-            self.n_tasks_total_in_epoch,
+            self.n_tasks_total,
+            self.n_trials_correct_in_epoch / self.n_trials_total_in_epoch * 100,
+            self.n_trials_correct_in_epoch,
+            self.n_trials_total_in_epoch
         ))
 
         # current_epoch = self.trainer.current_epoch
@@ -76,7 +84,7 @@ class LightningModuleBase(pl.LightningModule):
         # if current_epoch+1 == max_epochs:
         #     self.progress.progress.stop()
 
-        # if self.n_tasks_correct_in_epoch == self.n_tasks_total_in_epoch:
+        # if self.n_tasks_correct_in_epoch == self.n_tasks_total:
         #     self.n_continuous_epoch_no_pixel_wrong += 1
         # else:
         #     self.n_continuous_epoch_no_pixel_wrong = 0
@@ -88,10 +96,11 @@ class LightningModuleBase(pl.LightningModule):
 
         # free up the memory
         self.n_tasks_correct_in_epoch = 0
-        self.n_tasks_total_in_epoch = 0
+        self.n_tasks_total = 0
 
     def on_train_start(self):
         self.progress = filter(lambda callback: hasattr(callback, 'progress'), self.trainer.callbacks).__next__()
+        self.n_tasks_total = self.trainer.fit_loop.max_batches
 
     def update_task_progress(self, progress_id, current=None, task_id=None, loss=None, n_queue=None, depth=None, completed=None, description=None):
         self.progress._update(progress_id, current=current, completed=completed, description=description)
@@ -106,12 +115,12 @@ class LightningModuleBase(pl.LightningModule):
         self.progress._update_metrics(self.trainer, self)
         self.progress.refresh()
 
-    def print_log(self, mode, n_tasks_correct, n_tasks_total, loss):
+    def print_log(self, mode, n_sub_tasks_correct, n_sub_tasks_total, loss):
         self.print_and_write('{} Accuracy: {:>5.1f}% Tasks ({}/{}) | {} loss {:.4f}'.format(
             mode,
-            n_tasks_correct / n_tasks_total * 100,
-            n_tasks_correct,
-            n_tasks_total,
+            n_sub_tasks_correct / n_sub_tasks_total * 100,
+            n_sub_tasks_correct,
+            n_sub_tasks_total,
             mode,
             loss
         ))
@@ -174,7 +183,7 @@ class PixelEachSubstitutorBase(LightningModuleBase):
                 self.print_log('Test', **info)
 
             results.append({
-                'accuracy': info_train['n_tasks_correct'] / info_train['n_tasks_total'],
+                'accuracy': info_train['n_sub_tasks_correct'] / info_train['n_sub_tasks_total'],
                 'loss': info_train['loss'],
                 'outputs': outputs,
             })
@@ -183,20 +192,21 @@ class PixelEachSubstitutorBase(LightningModuleBase):
             self.progress._update(id_prog_trial, n+1, description=f'Trial {n+1}/{self.n_trials}')
 
         self.progress.progress.remove_task(id_prog_trial)
-        self.add_submission(task_id, results)
 
-        n_tasks_correct = 0
-        for trials in self.test_results[task_id]:
-            n_tasks_correct += any(all(all(pixel == 3 for pixel in row) for row in trial['correct_pixels']) for trial in trials)
+        if self.current_epoch+1 == self.trainer.max_epochs:
+            self.add_submission(task_id, results)
+
+        is_task_correct, n_trials_correct, n_trials_total = self.get_task_result(task_id, len(batches_test))
 
         return {
-            'n_tasks_correct': info['n_tasks_correct'],
-            'n_tasks_total': len(batches_test),
+            'n_trials_correct': n_trials_correct,
+            'n_trials_total': n_trials_total,
+            'is_task_correct': is_task_correct,
         }
 
     def _training_step(self, batches_train, task_id, n):
         max_epochs_for_each_task = self.max_epochs_for_each_task
-        n_tasks_total = sum([len(b[0]) for b in batches_train])
+        n_sub_tasks_total = sum([len(b[0]) for b in batches_train])
         
         total_loss = 0
         loss_prev = 0
@@ -210,7 +220,7 @@ class PixelEachSubstitutorBase(LightningModuleBase):
         for i in range(max_epochs_for_each_task):
             self.update_task_progress(progress_id, i+1, task_id, loss=total_loss, description=f'Epoch {i+1}/{self.max_epochs_for_each_task}')
             total_loss = 0
-            self.n_tasks_correct = 0
+            self.n_sub_tasks_correct = 0
 
             for (x, t) in batches_train:
                 y = self.model(x)
@@ -229,20 +239,20 @@ class PixelEachSubstitutorBase(LightningModuleBase):
                 n_times_constant_loss = 0
                 loss_prev = total_loss
 
-            if self.n_tasks_correct == n_tasks_total and total_loss < self.train_loss_threshold_to_stop or (total_loss > 0.5 and n_times_constant_loss == 10):
+            if self.n_sub_tasks_correct == n_sub_tasks_total and total_loss < self.train_loss_threshold_to_stop or (total_loss > 0.5 and n_times_constant_loss == 10):
                 break
 
         self.progress.progress.remove_task(progress_id)
 
         return {
             'loss': total_loss,
-            'n_tasks_correct': self.n_tasks_correct,
-            'n_tasks_total': n_tasks_total,
+            'n_sub_tasks_correct': self.n_sub_tasks_correct,
+            'n_sub_tasks_total': n_sub_tasks_total,
         }
 
     def _training_step_test(self, batches_test, task_id, n):
         total_loss = 0
-        self.n_tasks_correct = 0
+        self.n_sub_tasks_correct = 0
         task_result = []
         outputs = []
 
@@ -277,8 +287,8 @@ class PixelEachSubstitutorBase(LightningModuleBase):
 
         return {
             'loss': total_loss, 
-            'n_tasks_correct': self.n_tasks_correct, 
-            'n_tasks_total': len(batches_test),
+            'n_sub_tasks_correct': self.n_sub_tasks_correct, 
+            'n_sub_tasks_total': len(batches_test),
         }, outputs
 
     def _test_step_test(self, batches_test, task_id, n):
@@ -315,7 +325,7 @@ class PixelEachSubstitutorBase(LightningModuleBase):
         n_correct = (y_decoded == t_decoded).sum().int()
         n_pixels = t_decoded.numel()
 
-        self.n_tasks_correct += sum(torch.all(y_one == t_one).item() for y_one, t_one in zip(y_decoded, t_decoded))
+        self.n_sub_tasks_correct += sum(torch.all(y_one == t_one).item() for y_one, t_one in zip(y_decoded, t_decoded))
 
         return y_decoded, t_decoded, n_correct, n_pixels
 
@@ -326,57 +336,41 @@ class PixelEachSubstitutorBase(LightningModuleBase):
                 'results': self.test_results,
                 'hparams': {**self.model_kwargs, 'hyperparams_for_each_cell': self.params_for_each_cell},
             }
+    
+    def get_task_result(self, task_id, n_sub_tasks):
+        is_task_correct = True
+        n_trials_correct = 0
+        n_trials_total = self.n_trials * n_sub_tasks
+
+        for i_task in range(len(self.test_results[task_id])):
+            solved = False
+            for i in range(self.top_k_submission):
+                correct_pixels = self.test_results[task_id][i_task][:self.top_k_submission][i]['correct_pixels']
+                if all(all(pixel == 3 for pixel in row) for row in correct_pixels):
+                    n_trials_correct += 1
+                    solved = True
+                    
+            if not solved:
+                is_task_correct = False
+                
+        return is_task_correct, n_trials_correct, n_trials_total
 
 
 class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
-    def __init__(self, max_AFS=200, max_queue=20, max_depth=4, *args, **kwargs):
+    def __init__(self, max_AFS=200, max_queue=20, max_depth=4, verbose=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.max_AFS = max_AFS
         self.max_queue = max_queue
         self.max_depth = max_depth
+        self.verbose = verbose
 
-    def training_step(self, batches):
-        batches_train, batches_test, task_id = batches
-        self.print_and_write('\nTask ID: [bold white]{}[/bold white]'.format(task_id))
-
-        id_prog_trial = self.progress._add_task(self.n_trials, f'Trial 0/{self.n_trials}')
-        self.no_label = True if len(batches_test[0][1].shape) == 2 else False
-
-        results = []
-        for n in range(self.n_trials):
-            info_train = self._training_step(batches_train, task_id)
-            self.print_log('Train', **info_train)
-
-            info, outputs = self._training_step_test(batches_test, task_id) if not self.no_label else self._test_step_test(batches_test, task_id)
-            if not self.no_label:
-                self.print_log('Test', **info)
-
-            results.append({
-                'accuracy': info_train['n_tasks_correct'] / info_train['n_tasks_total'],
-                'loss': info_train['loss'],
-                'outputs': outputs,
-            })
-            
-            self.print_and_write(f"Trial {n+1}/{self.n_trials} | Restarting the training\n")
-            self.progress._update(id_prog_trial, n+1, description=f'Trial {n+1}/{self.n_trials}')
-
-        self.progress.progress.remove_task(id_prog_trial)
-
-        if self.current_epoch+1 == self.trainer.max_epochs:
-            self.add_submission(task_id, results)
-
-        return {
-            'n_tasks_correct': info['n_tasks_correct'],
-            'n_tasks_total': len(batches_test),
-        }
-
-    def _training_step(self, batches_train, task_id):
+    def _training_step(self, batches_train, task_id, n):
         def __print_one_step_result(end='\n'):
-            # for result, c_prev in zip(results, answer_map_prev):
-            #     for x_one, y_one, t_one, c_one, c_prev_one in zip(result['x_decoded'], result['y_decoded'], result['t_decoded'], result['c_decoded'], c_prev):
-            #         c_one = torch.where(c_one == 1, 3, 2)
-            #         c_prev_one = torch.where(c_prev_one == 1, 3, 2)
-            #         visualize_image_using_emoji(x_one, t_one, y_one, c_one, c_prev_one, titles=['Input', 'Target', 'Output', 'Correct', 'Correct Prev'])
+            for result, c_prev in zip(results, answer_map_prev):
+                for x_one, y_one, t_one, c_one, c_prev_one in zip(result['x_decoded'], result['y_decoded'], result['t_decoded'], result['c_decoded'], c_prev):
+                    c_one = torch.where(c_one == 1, 3, 2)
+                    c_prev_one = torch.where(c_prev_one == 1, 3, 2)
+                    visualize_image_using_emoji(x_one, t_one, y_one, c_one, c_prev_one, titles=['Input', 'Target', 'Output', 'Correct', 'Correct Prev'])
 
             print('Accuracy: {:.1f}% -> {:.1f}% ({:.1f}) | Corrects Kept: {} | Depth: {} {} | {} Epoch'.format(
                 acc_prev*100 if len(models_temp) != 1 else 0.0, 
@@ -395,8 +389,6 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
         def __build_models():
             nonlocal next_id
             if len(models) == 0 or (i >= 1 and new_record): # models[0] should train continuously
-                if len(models) == 0:
-                    print('-'*100)
                 # Create new model
                 varied_kwargs = self.params_for_each_cell[i] if i >= 1 else {}
                 model = self.model_class(*self.model_args, **{**self.model_kwargs, **varied_kwargs})
@@ -417,7 +409,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
 
             return models_temp, opt
 
-        n_tasks_total = sum([len(b[0]) for b in batches_train])
+        n_sub_tasks_total = sum([len(b[0]) for b in batches_train])
 
         accuracy0, answer_map0 = self.get_avg_accuracy(batches_train, return_corrects_info=True)
         checkpoint0 = {
@@ -457,7 +449,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
 
             for i in range(len(self.params_for_each_cell)):
                 models_temp, opt = __build_models()
-                results, total_loss, acc_next, n_tasks_correct, opt, n_epoch_trained = self._training_step_one_depth(models_temp, batches_train, opt, acc_prev)
+                results, total_loss, acc_next, n_sub_tasks_correct, opt, n_epoch_trained = self._training_step_one_depth(models_temp, batches_train, opt, acc_prev)
 
                 acc_max = max([_checkpoint['acc_prev_max'] for _checkpoint in queue] + [acc_prev_max])
                 self.update_task_progress(id_prog_acc, completed=acc_max*100, description=f'  Acc {acc_max*100:.1f}%' if acc_max != 1 else f'  Acc 100%')
@@ -502,7 +494,8 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                     n_repeat_max_acc = 0
                     n_epochs_trained = []
 
-                __print_one_step_result(end='\n' + ('-'*100 if len(queue) == 0 else ''))
+                if self.verbose:
+                    __print_one_step_result(end='\n' + ('-'*100 if len(queue) == 0 else ''))
 
                 if completed:
                     break
@@ -519,8 +512,8 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
 
         return {
             'loss': total_loss,
-            'n_tasks_correct': n_tasks_correct,
-            'n_tasks_total': n_tasks_total,
+            'n_sub_tasks_correct': n_sub_tasks_correct,
+            'n_sub_tasks_total': n_sub_tasks_total,
         }
 
     def _training_step_one_depth(self, models, batches_train, opt, acc_prev):
@@ -567,13 +560,13 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
             self.update_task_progress(id_prog_e, e+1, loss=loss, description=f'Epoch {e+1}/{self.max_epochs_for_each_task}')
 
         self.progress.progress.remove_task(id_prog_e)
-        acc_next, n_tasks_correct = self.get_avg_accuracy(zip(y_batch, t_batch), return_n_tasks_correct=True)
+        acc_next, n_sub_tasks_correct = self.get_avg_accuracy(zip(y_batch, t_batch), return_n_sub_tasks_correct=True)
 
-        return results, total_loss, acc_next, n_tasks_correct, opt, e+1
+        return results, total_loss, acc_next, n_sub_tasks_correct, opt, e+1
 
-    def _training_step_test(self, batches_test, task_id):
+    def _training_step_test(self, batches_test, task_id, n):
         total_loss = 0
-        self.n_tasks_correct = 0
+        self.n_sub_tasks_correct = 0
         task_result = []
         outputs = []
         ys = []
@@ -623,15 +616,15 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
 
         return {
             'loss': total_loss, 
-            'n_tasks_correct': self.n_tasks_correct, 
-            'n_tasks_total': len(batches_test),
+            'n_sub_tasks_correct': self.n_sub_tasks_correct, 
+            'n_sub_tasks_total': len(batches_test),
         }, outputs
 
     @staticmethod
-    def get_avg_accuracy(batches, return_n_tasks_correct=False, return_corrects_info=False):
+    def get_avg_accuracy(batches, return_n_sub_tasks_correct=False, return_corrects_info=False):
         accuracy_total = 0
         data_total = 0
-        n_tasks_correct = 0
+        n_sub_tasks_correct = 0
         c_decoded_batch = []
 
         for (y, t) in batches:
@@ -645,13 +638,13 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
             accuarcy_each = torch.sum(c_decoded, dim=(1, 2)) / y.argmax(dim=1)[0].numel() # [N, C, H, W]
             accuracy_total += torch.sum(accuarcy_each)
             data_total += len(y)
-            n_tasks_correct += torch.sum(torch.where(accuarcy_each == 1, 1, 0))
+            n_sub_tasks_correct += torch.sum(torch.where(accuarcy_each == 1, 1, 0))
 
         avg_accuracy = accuracy_total / data_total
 
         results = [avg_accuracy]
-        if return_n_tasks_correct:
-            results.append(n_tasks_correct)
+        if return_n_sub_tasks_correct:
+            results.append(n_sub_tasks_correct)
         if return_corrects_info:
             results.append(c_decoded_batch)
 
