@@ -159,7 +159,7 @@ class PixelEachSubstitutorBase(LightningModuleBase):
         super().__init__(lr=lr, save_dir=save_dir, *args, **kwargs)
         
         if self.top_k_submission > n_trials:
-            warnings.warn(f'top_k_submission should be less than or equal to n_trials. top_k_submission is set to {self.n_trials}.')
+            warnings.warn(f'top_k_submission should be less than or equal to n_trials. top_k_submission is set to {n_trials}.')
 
         self.model = self.model_class(*args, **kwargs)
         self.model_args = args
@@ -362,47 +362,28 @@ class PixelEachSubstitutorBase(LightningModuleBase):
 
 
 class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
-    def __init__(self, max_AFS=200, max_queue=20, max_depth=4, verbose=True, *args, **kwargs):
+    def __init__(self, max_AFS=200, max_queue=20, max_depth=4, verbose=False, n_repeat_max_acc_threshold=30, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.max_AFS = max_AFS
         self.max_queue = max_queue
         self.max_depth = max_depth
         self.verbose = verbose
+        self.n_repeat_max_acc_threshold = n_repeat_max_acc_threshold
 
     def _training_step(self, batches_train, task_id, n):
-        def __print_one_step_result(end='\n'):
-            for result, c_prev in zip(results, answer_map_prev):
-                for x_one, y_one, t_one, c_one, c_prev_one in zip(result['x_decoded'], result['y_decoded'], result['t_decoded'], result['c_decoded'], c_prev):
-                    c_one = torch.where(c_one == 1, 3, 2)
-                    c_prev_one = torch.where(c_prev_one == 1, 3, 2)
-                    visualize_image_using_emoji(x_one, t_one, y_one, c_one, c_prev_one, titles=['Input', 'Target', 'Output', 'Correct', 'Correct Prev'])
-
-            print('Accuracy: {:.1f}% -> {:.1f}% ({:.1f}) | Corrects Kept: {} | Depth: {} {} | {} Epoch'.format(
-                acc_prev*100 if len(models) != 1 else 0.0, 
-                acc_next*100, 
-                acc_prev_max*100, 
-                '[green]T[/green]' if is_corrected_pixels_maintained_next else '[red]F[/red]',
-                len(models), 
-                [_model.instance_id for _model in models], # '▶️'*len(models), # 
-                n_epoch_trained, 
-            ), end=end)
-            # print('Queue:', ' '.join(
-            #     ['{}'.format((round(acc.item()*100, 1), [_model.instance_id for _model in _models])) \
-            #     for _models, _, _, _, acc, _, _ in queue]
-            # ))
 
         def __build_models():
             nonlocal next_id
-            if len(models_prev) == 0 or (i >= 1 and extend): # models_prev[0] should train continuously
+            if len(models_prev) == 0 or (idx_cell >= 1 and extend): # models_prev[0] should train continuously
                 # Create new model
-                varied_kwargs = self.params_for_each_cell[i] if i >= 1 else {}
+                varied_kwargs = self.params_for_each_cell[idx_cell] if idx_cell >= 1 else {}
                 model = self.model_class(*self.model_args, **{**self.model_kwargs, **varied_kwargs})
                 model.to(batches_train[0][0].device)
-                model.id = self.params_for_each_cell[i].get('id')
+                model.id = self.params_for_each_cell[idx_cell].get('id')
                 model.instance_id = (next_id := next_id + 1)
                 models = models_prev + [model]
                 opt = torch.optim.Adam(model.parameters(), lr=self.lr)
-            elif acc_next == 1 or (i == 0):
+            elif acc_next == 1 or (idx_cell == 0):
                 # Lengthen the last model
                 models = models_prev + [models_prev[-1]]
                 opt = opt_prev
@@ -413,20 +394,6 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
 
             return models, opt
 
-        def copy_model_and_opt(models, opt):
-            kwargs = self.params_for_each_cell[i] if i < len(self.params_for_each_cell) else {}
-            id = kwargs.pop('id', None)
-            model = self.model_class(*self.model_args, **{**self.model_kwargs, **kwargs})
-            model.load_state_dict(copy.deepcopy(models[-1].state_dict()))
-            model.id = id
-            model.instance_id = models[-1].instance_id
-            models_copied = [model for _ in range(len(models))]
-
-            opt_copied = torch.optim.Adam(model.parameters(), lr=self.lr)
-            opt_copied.load_state_dict(copy.deepcopy(opt.state_dict()))
-            
-            return models_copied, opt_copied
-
         n_sub_tasks_total = sum([len(b[0]) for b in batches_train])
 
         accuracy0, answer_map0 = self.get_avg_accuracy(batches_train, return_corrects_info=True)
@@ -435,7 +402,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
             'answer_map': answer_map0,
             'opt': None,
             'acc_prev': accuracy0,
-            'acc_prev_max': accuracy0,
+            'acc_max': accuracy0,
             'n_epochs_trained': [],
             'extend': False,
             'is_corrected_pixels_maintained_prev': True,
@@ -452,93 +419,44 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
         for i in range(self.max_AFS): # AFS: Accuracy First Search
             self.update_task_progress(id_prog_afs, i+1, task_id=task_id, n_queue=len(queue), depth=max(len(queue[0]['models']), 1), description='  AFS {}'.format(f'{i+1}/{self.max_AFS}'))
 
-            queue = sorted(queue, key=lambda x: (x['is_corrected_pixels_maintained'], x['acc_prev_max']), reverse=True)[:self.max_queue]
+            queue = sorted(queue, key=lambda x: (x['acc_max']), reverse=True) # x['is_corrected_pixels_maintained'], 
+            queue = queue[:self.max_queue]
             checkpoint = queue.pop(0)
-            models_prev, answer_map_prev, opt_prev, acc_prev, acc_prev_max, n_epochs_trained, extend, is_corrected_pixels_maintained_prev, is_corrected_pixels_maintained = \
+            models_prev, opt_prev, acc_prev, acc_max, extend, is_corrected_pixels_maintained = \
                 checkpoint.get('models'), \
-                checkpoint.get('answer_map'), \
                 checkpoint.get('opt'), \
                 checkpoint.get('acc_prev'), \
-                checkpoint.get('acc_prev_max'), \
-                checkpoint.get('n_epochs_trained'), \
+                checkpoint.get('acc_max'), \
                 checkpoint.get('extend'), \
-                checkpoint.get('is_corrected_pixels_maintained_prev'), \
                 checkpoint.get('is_corrected_pixels_maintained'), \
 
-            for i in range(len(self.params_for_each_cell)):
+            for idx_cell in range(len(self.params_for_each_cell)):
                 models, opt = __build_models()
-                acc_max = max([_checkpoint['acc_prev_max'] for _checkpoint in queue] + [acc_prev_max])
-                training_branch_generator = self._training_step_one_depth(models, batches_train, opt, acc_prev, accuracy0)
-                checkpoints_to_append = []
-                n_repeat_max_acc = 0
-
-                for results, total_loss, acc_next, n_sub_tasks_correct, opt, n_epoch_trained in training_branch_generator:
-                    self.update_task_progress(id_prog_acc, n_queue=len(queue), depth=len(models), completed=acc_max*100, description=f'  Acc {acc_max*100:.1f}%' if acc_max != 1 else f'  Acc 100%')
-
-                    answer_map = [result['c_decoded'] for result in results]
-                    is_corrected_pixels_maintained_next = self._is_corrected_pixels_maintained(answer_map_prev, answer_map) # Prvent extension before finding the input
-                    n_repeat_max_acc = 0 if not acc_next <= acc_prev_max or acc_next == 1 else (n_repeat_max_acc + 1)
-
-                    if is_corrected_pixels_maintained_next:
-                        for j in range(len(checkpoints_to_append)-1, -1, -1):
-                            if not checkpoints_to_append[j]['is_corrected_pixels_maintained']:
-                                del checkpoints_to_append[j]
-
-                    if n_repeat_max_acc == 20:
-                        break
-
-                    if acc_next == 1 and acc_prev == acc_next and n_perfect_extension == 3:
-                        completed = True
-                    elif acc_next == 1 or (acc_next >= acc_prev_max and (is_corrected_pixels_maintained or is_corrected_pixels_maintained_next) and len(models) < self.max_depth):
-                        acc_prev_max = max(acc_prev_max, acc_next)
-
-                        checkpoint_kwargs = {
-                            'answer_map': answer_map,
-                            'acc_prev': acc_next,
-                            'acc_prev_max': acc_prev_max,
-                            'n_epochs_trained': n_epochs_trained + [n_epoch_trained],
-                            'is_corrected_pixels_maintained_prev': is_corrected_pixels_maintained,
-                            'is_corrected_pixels_maintained': is_corrected_pixels_maintained_next,
-                            'extend': True,
-                        }
-
-                        if acc_next == 1 and acc_prev == acc_next:
-                            n_perfect_extension += 1
-
-                            checkpoints_to_append.append({
-                                'models': models,
-                                'opt': opt,
-                                **checkpoint_kwargs
-                            })
-                        else:
-                            # duplicated_performace = False
-                            # for checkpoint in checkpoints_to_append:
-                            #     if checkpoint['acc_prev'] == acc_next and self._is_same_performance(checkpoint['answer_map'], answer_map):
-                            #         duplicated_performace = True
-                            #         break
-                            # if duplicated_performace:
-                            #     continue
-
-                            models_copied, opt_copied = copy_model_and_opt(models, opt)
-
-                            if self.verbose:
-                                __print_one_step_result(end='\n' + '-'*100 + '\n')
-
-                            checkpoints_to_append.append({
-                                'models': models_copied,
-                                'opt': opt_copied,
-                                **checkpoint_kwargs
-                            })
                 
-                if len(checkpoints_to_append) > 0 and all([not x['is_corrected_pixels_maintained'] for x in checkpoints_to_append]):
-                    checkpoints_to_append = [checkpoints_to_append[-1]]
-                    # min_acc = min([x['acc_prev'] for x in checkpoints_to_append])
-                    # checkpoints_to_append = [x for x in checkpoints_to_append if x['acc_prev'] == min_acc or x['is_corrected_pixels_maintained']]
+                max_epoch = self.max_epochs_for_each_task * (2 if len(models) == 1 else 1)
+                id_prog_e = self.progress._add_task(max_epoch, f'Epoch 0/{max_epoch}')
+                training_branch_generator = self._training_get_checkpoint_generaotr(models, batches_train, opt, acc_prev, acc_max, accuracy0, max_epoch, id_prog_e)
 
-                print([(x['is_corrected_pixels_maintained'], round(x['acc_prev'].item()*100, 2)) for x in checkpoints_to_append])
-                queue.extend(checkpoints_to_append)
+                result = self._training_step_generate_checkpoints(models, opt, training_branch_generator, checkpoint, id_prog_acc, len(queue), idx_cell)
+                checkpoints_new, is_extended_correctly, acc_next, total_loss, n_sub_tasks_correct = result
 
-                if completed or (len(queue) > 0 and acc_next >= acc_prev_max):
+                if is_extended_correctly:
+                    n_perfect_extension += 1
+
+                    if n_perfect_extension == 4:
+                        completed = True
+
+                # if len(checkpoints_new) > 0 and all([not x['is_corrected_pixels_maintained'] for x in checkpoints_new]):
+                #     checkpoints_new = [checkpoints_new[-1]]
+                    # min_acc = min([x['acc_prev'] for x in checkpoints_new])
+                    # checkpoints_new = [x for x in checkpoints_new if x['acc_prev'] == min_acc or x['is_corrected_pixels_maintained']]
+
+                print(is_corrected_pixels_maintained, round(acc_prev.item()*100, 2), '->')
+                print([(x['is_corrected_pixels_maintained'], round(x['acc_prev'].item()*100, 2)) for x in checkpoints_new])
+                print()
+                queue.extend(checkpoints_new)
+
+                if completed or (len(queue) > 0 and acc_next >= acc_max):
                     break
 
             if len(queue) == 0:
@@ -557,13 +475,82 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
             'n_sub_tasks_total': n_sub_tasks_total,
         }
 
-    def _training_step_one_depth(self, models, batches_train, opt, acc_prev, accuracy0):
-        max_epoch = self.max_epochs_for_each_task * (2 if len(models) == 1 else 1)
-        id_prog_e = self.progress._add_task(max_epoch, f'Epoch 0/{max_epoch}')
-    
+    def _training_step_generate_checkpoints(self, models: nn.Module, opt: torch.optim.Optimizer, training_branch_generator, checkpoint: dict, id_prog_acc: int, n_queue: int, idx_cell: int):
+        answer_map_prev, acc_prev, acc_max, n_epochs_trained, is_corrected_pixels_maintained = \
+            checkpoint.get('answer_map'), \
+            checkpoint.get('acc_prev'), \
+            checkpoint.get('acc_max'), \
+            checkpoint.get('n_epochs_trained'), \
+            checkpoint.get('is_corrected_pixels_maintained'), \
+
+        checkpoints_new = []
+        is_extended_correctly = False
+        _acc_next = 0.0
+        _total_loss = 0.0
+        _n_sub_tasks_correct = 0
+
+        for results, total_loss, acc_next, n_sub_tasks_correct, opt, n_epoch_trained in training_branch_generator:
+            _acc_next = acc_next
+            _total_loss = total_loss
+            _n_sub_tasks_correct = n_sub_tasks_correct
+            self.update_task_progress(id_prog_acc, n_queue=n_queue+len(checkpoints_new), completed=acc_max*100, description=f'  Acc {acc_max*100:.1f}%' if acc_max != 1 else f'  Acc 100%')
+
+            answer_map = [result['c_decoded'] for result in results]
+            is_corrected_pixels_maintained_next = self.is_corrected_pixels_maintained(answer_map_prev, answer_map) # Prvent extension before finding the input
+          
+            if is_corrected_pixels_maintained_next:
+                for j in range(len(checkpoints_new)-1, -1, -1):
+                    if not checkpoints_new[j]['is_corrected_pixels_maintained']:
+                        del checkpoints_new[j]
+                        
+            if acc_next == 1 or (acc_next >= acc_max and ((len(models) > 2 and is_corrected_pixels_maintained) or is_corrected_pixels_maintained_next) and len(models) < self.max_depth):
+                acc_max = max(acc_max, acc_next)
+
+                checkpoint_kwargs = {
+                    'answer_map': answer_map,
+                    'acc_prev': acc_next,
+                    'acc_max': acc_max,
+                    'n_epochs_trained': n_epochs_trained + [n_epoch_trained],
+                    'is_corrected_pixels_maintained_prev': is_corrected_pixels_maintained,
+                    'is_corrected_pixels_maintained': is_corrected_pixels_maintained_next,
+                    'extend': True,
+                }
+
+                if acc_next == 1 and acc_prev == acc_next:
+                    is_extended_correctly = True
+
+                    checkpoints_new.append({
+                        'models': models,
+                        'opt': opt,
+                        **checkpoint_kwargs
+                    })
+                else:
+                    # duplicated_performace = False
+                    # for checkpoint in checkpoints_new:
+                    #     if checkpoint['acc_prev'] == acc_next and self.is_same_performance(checkpoint['answer_map'], answer_map):
+                    #         duplicated_performace = True
+                    #         break
+                    # if duplicated_performace:
+                    #     continue
+
+                    models_copied, opt_copied = self.copy_model_and_opt(models, opt, idx_cell)
+
+                    if self.verbose:
+                        self._print_one_step_result(results, answer_map_prev, len(models), [_model.instance_id for _model in models], is_corrected_pixels_maintained_next, acc_prev, acc_next, acc_max, n_epoch_trained, end='\n' + '-'*100 + '\n')
+
+                    checkpoints_new.append({
+                        'models': models_copied,
+                        'opt': opt_copied,
+                        **checkpoint_kwargs
+                    })
+                    
+        return checkpoints_new, is_extended_correctly, _acc_next, _total_loss, _n_sub_tasks_correct
+
+    def _training_get_checkpoint_generaotr(self, models: nn.Module, batches_train, opt: torch.optim.Optimizer, acc_prev: float, acc_max: float, accuracy0: float, max_epoch: int, id_prog_e: int):
         t_batch = [batch[1] for batch in batches_train]
-        acc_next_max = 0
-        label_input = True if acc_prev == accuracy0 and acc_next_max < accuracy0 else False
+        acc_max = 0
+        n_repeat_max_acc = 0
+        label_input = True if acc_prev == accuracy0 and acc_max < accuracy0 else False
         recognize_input = False
 
         for e in range(max_epoch):
@@ -575,6 +562,10 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                 y = x.detach().clone()
                 for depth, model in enumerate(models):
                     y = model(y, epoch=e, batch_idx=i, return_prob=False if depth == len(models)-1 else True)
+
+                    if depth != len(models)-1:
+                        _, max_indices = torch.max(y, dim=1)
+                        y = torch.nn.functional.one_hot(max_indices, num_classes=y.size(1)).to(x.dtype).permute(0, 3, 1, 2)
                 loss = self.loss_fn(y, t if not label_input else x)
 
                 opt.zero_grad()
@@ -597,15 +588,18 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                 y_batch.append(y)
 
             acc_next, n_sub_tasks_correct = self.get_avg_accuracy(zip(y_batch, t_batch), return_n_sub_tasks_correct=True)
-            acc_next_max = max(acc_next_max, acc_next)
+            n_repeat_max_acc = 0 if not acc_next <= acc_max or acc_next == 1 else (n_repeat_max_acc + 1)
+            acc_max = max(acc_max, acc_next)
 
-            if not recognize_input and acc_prev == accuracy0 and acc_next_max >= accuracy0:
+            if not recognize_input and acc_prev == accuracy0 and acc_max >= accuracy0:
                 label_input = False
                 recognize_input = True
 
-            self.update_task_progress(id_prog_e, e+1, loss=loss, description=f'Epoch {e+1}/{max_epoch}')
+            self.update_task_progress(id_prog_e, e+1, loss=loss, depth=len(models), description=f'Epoch {e+1}/{max_epoch}')
 
-            if acc_next == 1 or total_loss < 0.0001 or (acc_prev < acc_next and acc_next_max == acc_next and len(models) < self.max_depth):
+            if len(models) != 1 and n_repeat_max_acc == self.n_repeat_max_acc_threshold and len(models) <= 2:
+                break
+            if acc_next == 1 or total_loss < 0.0001 or (acc_prev < acc_next and acc_max == acc_next and len(models) < self.max_depth):
                 yield results, total_loss, acc_next, n_sub_tasks_correct, opt, e+1
 
                 if acc_next == 1:
@@ -632,9 +626,9 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                 y = model(y, return_prob=False if depth == len(self.models)-1 else True)
                 ys.append((y, 'Depth {}'.format(depth+1)))
 
-                # if depth != len(self.models)-1:
-                #     _, max_indices = torch.max(y, dim=1)
-                #     y = torch.nn.functional.one_hot(max_indices, num_classes=y.size(1)).to(x.dtype).permute(0, 3, 1, 2)
+                if depth != len(self.models)-1:
+                    _, max_indices = torch.max(y, dim=1)
+                    y = torch.nn.functional.one_hot(max_indices, num_classes=y.size(1)).to(x.dtype).permute(0, 3, 1, 2)
 
             loss = self.loss_fn(y, t)
             total_loss += loss
@@ -679,6 +673,20 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
             'n_sub_tasks_total': len(batches_test),
         }, outputs
 
+    def copy_model_and_opt(self, models, opt, idx_cell):
+        kwargs = self.params_for_each_cell[idx_cell] if idx_cell < len(self.params_for_each_cell) else {}
+        id = kwargs.pop('id', None)
+        model = self.model_class(*self.model_args, **{**self.model_kwargs, **kwargs})
+        model.load_state_dict(copy.deepcopy(models[-1].state_dict()))
+        model.id = id
+        model.instance_id = models[-1].instance_id
+        models_copied = [model for _ in range(len(models))]
+
+        opt_copied = torch.optim.Adam(model.parameters(), lr=self.lr)
+        opt_copied.load_state_dict(copy.deepcopy(opt.state_dict()))
+        
+        return models_copied, opt_copied
+
     @staticmethod
     def get_avg_accuracy(batches, return_n_sub_tasks_correct=False, return_corrects_info=False):
         accuracy_total = 0
@@ -712,18 +720,40 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
         return results
 
     @staticmethod
-    def _is_corrected_pixels_maintained(answer_map_prev, answer_map):
+    def is_corrected_pixels_maintained(answer_map_prev, answer_map):
         for correct_previous_batch, correct_current_batch in zip(answer_map_prev, answer_map):
             if torch.any((correct_previous_batch - correct_current_batch) > 0):
                 return False
         return True
     
     @staticmethod
-    def _is_same_performance(answer_map_prev, answer_map):
+    def is_same_performance(answer_map_prev, answer_map):
         for correct_previous_batch, correct_current_batch in zip(answer_map_prev, answer_map):
             if not torch.all(correct_previous_batch == correct_current_batch):
                 return False
         return True
+
+    @staticmethod
+    def _print_one_step_result(results, answer_map_prev, model_length, model_ids, is_corrected_pixels_maintained_next, acc_prev, acc_next, acc_max, n_epoch_trained, end='\n'):
+        for result, c_prev in zip(results, answer_map_prev):
+            for x_one, y_one, t_one, c_one, c_prev_one in zip(result['x_decoded'], result['y_decoded'], result['t_decoded'], result['c_decoded'], c_prev):
+                c_one = torch.where(c_one == 1, 3, 2)
+                c_prev_one = torch.where(c_prev_one == 1, 3, 2)
+                visualize_image_using_emoji(x_one, t_one, y_one, c_one, c_prev_one, titles=['Input', 'Target', 'Output', 'Correct', 'Correct Prev'])
+
+        print('Accuracy: {:.1f}% -> {:.1f}% ({:.1f}) | Corrects Kept: {} | Depth: {} {} | {} Epoch'.format(
+            acc_prev*100 if model_length != 1 else 0.0, 
+            acc_next*100, 
+            acc_max*100, 
+            '[green]T[/green]' if is_corrected_pixels_maintained_next else '[red]F[/red]',
+            model_length, 
+            model_ids, # '▶️'*model_length, # 
+            n_epoch_trained, 
+        ), end=end)
+        # print('Queue:', ' '.join(
+        #     ['{}'.format((round(acc.item()*100, 1), [_model.instance_id for _model in _models])) \
+        #     for _models, _, _, _, acc, _, _ in queue]
+        # ))
 
 
 class PixelEachSubstitutorL(PixelEachSubstitutorBase):
