@@ -213,7 +213,9 @@ tasks_fulid = '''\
 444801d8 f1cefba8 d4f3cd78 aba27056'''.split()
 
 tasks_sequential_simple_line = '''\
-*d07ae81c *e21d9049 *855e0971 *bd4472b8 *264363fd *ec883f72 *25d487eb *82819916 d9f24cd1 3bd67248 *5c0a986e *d13f3404 *6d58a25d *6e19193c *d43fd935 *1f0c79e5 *b8cdaf2b *8d510a79 *41e4d17e *623ea044 *7ddcd7ec *a78176bb ea786f4a e40b9e2f'''.split()
+d9f24cd1 *3bd67248 *5c0a986e *7ddcd7ec 
+'''.split()
+# *d07ae81c *e21d9049 *855e0971 *bd4472b8 *264363fd *ec883f72 *25d487eb *82819916 *6d58a25d *6e19193c *d43fd935 *1f0c79e5 *b8cdaf2b *8d510a79 *41e4d17e *623ea044 *a78176bb *ea786f4a *e40b9e2f
 
 
 def get_filter_funcs():
@@ -221,9 +223,7 @@ def get_filter_funcs():
 
         ARCDataClassifier.in_data_codes_f([
             # '22168020',
-            'd9f24cd1', '3bd67248',
-
-            # *tuple(filter(lambda x: len(x) == 8, tasks_sequential_simple_line)),
+            *tuple(filter(lambda x: len(x) == 8, tasks_sequential_simple_line)),
             # *tuple(filter(lambda x: len(x) == 8, tasks_fulid)),
             # *tuple(filter(lambda x: len(x) == 8, tasks_fill_1)),
             # *tuple(filter(lambda x: len(x) == 8, tasks_fill_2)),

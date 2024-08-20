@@ -31,6 +31,7 @@ def get_model_class(model_name: str):
     else:
         raise ValueError(f"Model name {model_name} not found")
 
+################################################################################################################################################################################################################################################################
 
 @dataclass
 class DataConfig:
@@ -58,6 +59,8 @@ class ModelConfig:
     name: str = 'FillerKeepInput'
     pass
 
+################################################################################################################################################################################################################################################################
+
 @dataclass
 class FillerKeepInputConfig:
     reduced_channels_encoder: List[int] = (512, 32)
@@ -79,23 +82,21 @@ class PixelEachSubstitutorBaseConfig:
     
     L_dims_encoded: List[int] = (9,)
     L_dims_decoded: List[int] = (1,)
+
     pad_class_initial: int = 0
     pad_n_head: int | None = None
     pad_dim_feedforward: int = 1
     pad_num_layers: int = 4
+
     L_n_head: int | None = None
     L_dim_feedforward: int = 1
     L_num_layers: int = 1
     C_n_head: int | None = None
     C_dim_feedforward: int = 1
     C_num_layers: int = 1
+
     dropout: float = 0.1
     n_class: int = 10
-
-    n_trials: int = 1
-    hyperparams_for_each_cell: List[dict] = tuple()
-    max_epochs_for_each_task: int = 30
-    train_loss_threshold_to_stop: float = 0.01
 
 @dataclass
 class PixelEachSubstitutorRepeatConfig(PixelEachSubstitutorBaseConfig):
@@ -103,17 +104,61 @@ class PixelEachSubstitutorRepeatConfig(PixelEachSubstitutorBaseConfig):
     max_queue: int = 20
     max_depth: int = 4
 
-
+@dataclass
 class PixelEachSubstitutorConfig(PixelEachSubstitutorBaseConfig):
     C_dims_encoded: List[int] = (2,)
     
+@dataclass
 class PixelEachSubstitutorRepeatConfig(PixelEachSubstitutorRepeatConfig):
     C_dims_encoded: List[int] = (2,)
 
+@dataclass
 class PixelEachSubstitutorNonColorEncodingConfig(PixelEachSubstitutorBaseConfig):
     encode_location: bool = True
-    L_dims_encoded: List[int] = [32, 16]
+    L_dims_encoded: List[int] = (32, 16)
 
+@dataclass
 class PixelEachSubstitutorRepeatNonColorEncodingConfig(PixelEachSubstitutorRepeatConfig):
     encode_location: bool = True
-    L_dims_encoded: List[int] = [32, 16]
+    L_dims_encoded: List[int] = (32, 16)
+
+################################################################################################################################################################################################################################################################
+
+@dataclass
+class FillerKeepInputLightningConfig:
+    pass
+
+@dataclass
+class FillerKeepInputIgnoreColorLightningConfig:
+    pass
+
+
+@dataclass
+class LightningConfigBase:
+    n_trials: int = 2
+    hyperparams_for_each_cell: List[dict] = tuple()
+    train_loss_threshold_to_stop: float = 0.01
+
+@dataclass
+class PixelEachSubstitutorLightningConfig(LightningConfigBase):
+    max_epochs_for_each_task: int = 3
+
+@dataclass
+class PixelEachSubstitutorNonColorEncodingLightningConfig(LightningConfigBase):
+    max_epochs_for_each_task: int = 3
+
+@dataclass
+class PixelEachSubstitutorRepeatLightningConfig(LightningConfigBase):
+    max_queue: int = 20
+    max_depth: int = 30
+    max_AFS: int = 100 # AFS: Accuracy First Search
+    max_epochs_per_AFS: int = 100
+
+@dataclass 
+class PixelEachSubstitutorRepeatNonColorEncodingLightningConfig(LightningConfigBase):
+    max_queue: int = 20
+    max_depth: int = 30
+    max_AFS: int = 100 # AFS: Accuracy First Search
+    max_epochs_per_AFS: int = 100
+
+################################################################################################################################################################################################################################################################

@@ -1,5 +1,6 @@
 defaults:
   - data: PixelEachSubstitutor
   - model: PixelEachSubstitutorRepeat
+  - lightning: PixelEachSubstitutorRepeat
   - train: PixelEachSubstitutor
   - test: PixelEachSubstitutor

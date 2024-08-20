@@ -167,7 +167,7 @@ class PixelEachSubstitutorBase(LightningModuleBase):
         self.loss_fn = nn.CrossEntropyLoss()
 
         self.n_trials = n_trials
-        self.params_for_each_cell = [{ 'id': 0 }] + (hyperparams_for_each_cell if hyperparams_for_each_cell else [])
+        self.params_for_each_cell = [{}] + (hyperparams_for_each_cell if hyperparams_for_each_cell else [])
         self.max_epochs_for_each_task = max_epochs_for_each_task
         self.train_loss_threshold_to_stop = train_loss_threshold_to_stop
 
@@ -244,7 +244,7 @@ class PixelEachSubstitutorBase(LightningModuleBase):
                 n_times_constant_loss = 0
                 loss_prev = total_loss
 
-            if self.n_sub_tasks_correct == n_sub_tasks_total and total_loss < self.train_loss_threshold_to_stop or (total_loss > 0.5 and n_times_constant_loss == 10):
+            if (self.n_sub_tasks_correct == n_sub_tasks_total and total_loss < self.train_loss_threshold_to_stop) or (total_loss > 0.5 and n_times_constant_loss == 10):
                 break
 
         self.progress.progress.remove_task(progress_id)
@@ -362,13 +362,15 @@ class PixelEachSubstitutorBase(LightningModuleBase):
 
 
 class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
-    def __init__(self, max_AFS=200, max_queue=20, max_depth=4, verbose=True, n_repeat_max_acc_threshold=30, *args, **kwargs):
+    def __init__(self, max_AFS=200, max_queue=20, max_depth=4, max_epochs_per_AFS=100, verbose=False, n_repeat_max_acc_threshold=30, prior_to_corrected_pixels=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.max_AFS = max_AFS
         self.max_queue = max_queue
         self.max_depth = max_depth
         self.verbose = verbose
         self.n_repeat_max_acc_threshold = n_repeat_max_acc_threshold
+        self.prior_to_corrected_pixels = prior_to_corrected_pixels
+        self.max_epochs_per_AFS = max_epochs_per_AFS
 
     def _training_step(self, batches_train, task_id, n):
 
@@ -379,7 +381,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                 varied_kwargs = self.params_for_each_cell[idx_cell] if idx_cell >= 1 else {}
                 model = self.model_class(*self.model_args, **{**self.model_kwargs, **varied_kwargs})
                 model.to(batches_train[0][0].device)
-                model.id = self.params_for_each_cell[idx_cell].get('id')
+                model.id = idx_cell
                 model.instance_id = (next_id := next_id + 1)
                 models = models_prev + [model]
                 opt = torch.optim.Adam(model.parameters(), lr=self.lr)
@@ -393,7 +395,6 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                 opt = opt_prev
 
             return models, opt
-
         n_sub_tasks_total = sum([len(b[0]) for b in batches_train])
 
         accuracy0, answer_map0 = self.get_avg_accuracy(batches_train, return_corrects_info=True)
@@ -415,11 +416,12 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
         next_id = 0
         completed = False
         n_perfect_extension = 0
+        key_sorting = lambda x: (x['is_corrected_pixels_maintained'], x['acc_max']) if self.prior_to_corrected_pixels else (x['acc_max'])
 
         for i in range(self.max_AFS): # AFS: Accuracy First Search
             self.update_task_progress(id_prog_afs, i+1, task_id=task_id, n_queue=len(queue), depth=max(len(queue[0]['models']), 1), description='  AFS {}'.format(f'{i+1}/{self.max_AFS}'))
 
-            queue = sorted(queue, key=lambda x: (x['acc_max']), reverse=True) # x['is_corrected_pixels_maintained'], 
+            queue = sorted(queue, key=key_sorting, reverse=True)
             queue = queue[:self.max_queue]
             checkpoint = queue.pop(0)
             models_prev, opt_prev, acc_prev, acc_max, extend, is_corrected_pixels_maintained = \
@@ -432,8 +434,8 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
 
             for idx_cell in range(len(self.params_for_each_cell)):
                 models, opt = __build_models()
-                
-                max_epoch = self.max_epochs_for_each_task * (2 if len(models) == 1 else 1)
+
+                max_epoch = self.max_epochs_per_AFS * (2 if len(models) == 1 else 1)
                 id_prog_e = self.progress._add_task(max_epoch, f'Epoch 0/{max_epoch}')
                 training_branch_generator = self._training_get_checkpoint_generaotr(models, batches_train, opt, acc_prev, acc_max, accuracy0, max_epoch, id_prog_e)
 
@@ -451,6 +453,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                     # min_acc = min([x['acc_prev'] for x in checkpoints_new])
                     # checkpoints_new = [x for x in checkpoints_new if x['acc_prev'] == min_acc or x['is_corrected_pixels_maintained']]
 
+                print([model.instance_id for model in models])
                 print(is_corrected_pixels_maintained, round(acc_prev.item()*100, 2), '->')
                 print([(x['is_corrected_pixels_maintained'], round(x['acc_prev'].item()*100, 2)) for x in checkpoints_new])
                 print()
@@ -537,7 +540,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                     models_copied, opt_copied = self.copy_model_and_opt(models, opt, idx_cell)
 
                     if self.verbose:
-                        self._print_one_step_result(results, answer_map_prev, len(models), [_model.instance_id for _model in models], is_corrected_pixels_maintained_next, acc_prev, acc_next, acc_max, n_epoch_trained, end='\n' + '-'*100 + '\n')
+                        self._print_one_step_result(results, answer_map_prev, len(models), [model.instance_id for model in models], is_corrected_pixels_maintained_next, acc_prev, acc_next, acc_max, n_epoch_trained, end='\n' + '-'*100 + '\n')
 
                     checkpoints_new.append({
                         'models': models_copied,
@@ -592,7 +595,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
             n_repeat_max_acc = 0 if not acc_next < acc_max or acc_next == 1 else (n_repeat_max_acc + 1)
             self.update_task_progress(id_prog_e, e+1, loss=loss, depth=len(models), description=f'Epoch {e+1}/{max_epoch}')
 
-            if len(models) != 1 and acc_next <= acc_max and n_repeat_max_acc > self.n_repeat_max_acc_threshold:
+            if len(models) != 1 and acc_prev < acc_max and n_repeat_max_acc > self.n_repeat_max_acc_threshold:
                 break
 
             if not recognize_input and acc_prev == accuracy0 and acc_next >= accuracy0:
@@ -600,7 +603,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                 recognize_input = True
             acc_max = max(acc_max, acc_next)
 
-            if acc_next == 1 or total_loss < 0.0001 or (acc_prev < acc_next and acc_max == acc_next and len(models) < self.max_depth):
+            if (acc_next == 1 and total_loss < self.train_loss_threshold_to_stop) or (acc_prev < acc_next and acc_max == acc_next and len(models) < self.max_depth):
                 yield results, total_loss, acc_next, n_sub_tasks_correct, opt, e+1
 
                 if acc_next == 1:
@@ -675,11 +678,10 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
         }, outputs
 
     def copy_model_and_opt(self, models, opt, idx_cell):
-        kwargs = self.params_for_each_cell[idx_cell] if idx_cell < len(self.params_for_each_cell) else {}
-        id = kwargs.pop('id', None)
+        kwargs = self.params_for_each_cell[models[-1].id] if idx_cell < len(self.params_for_each_cell) else {}
         model = self.model_class(*self.model_args, **{**self.model_kwargs, **kwargs})
         model.load_state_dict(copy.deepcopy(models[-1].state_dict()))
-        model.id = id
+        model.id = models[-1].id
         model.instance_id = models[-1].instance_id
         models_copied = [model for _ in range(len(models))]
 
@@ -752,7 +754,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
             n_epoch_trained, 
         ), end=end)
         # print('Queue:', ' '.join(
-        #     ['{}'.format((round(acc.item()*100, 1), [_model.instance_id for _model in _models])) \
+        #     ['{}'.format((round(acc.item()*100, 1), [model.instance_id for model in _models])) \
         #     for _models, _, _, _, acc, _, _ in queue]
         # ))
 

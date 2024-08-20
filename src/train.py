@@ -14,18 +14,8 @@ from rich import print
 from rich.traceback import install
 install()
 
-from arc.model import (
-    get_model_class,
-    DataConfig,
-    TrainConfig,
-    TestConfig,
-    FillerKeepInputConfig,
-    FillerKeepInputIgnoreColorConfig,
-    PixelEachSubstitutorConfig,
-    PixelEachSubstitutorRepeatConfig,
-    PixelEachSubstitutorNonColorEncodingConfig,
-    PixelEachSubstitutorRepeatNonColorEncodingConfig,
-)
+import arc.model as config
+from arc.model import get_model_class
 from arc.utils.lightning_custom import TrainerCustom, RichProgressBarCustom
 from data import ARCDataModule
 from test import test as test_fn
@@ -35,6 +25,7 @@ def train(config: DictConfig, model=None, filter_funcs=None, test=False, return_
     hparams_data = OmegaConf.to_container(config.data.params, resolve=True)
     hparams_model = OmegaConf.to_container(config.model.params, resolve=True)
     hparams_train = OmegaConf.to_container(config.train.params, resolve=True)
+    hparams_lightning = OmegaConf.to_container(config.lightning.params, resolve=True)
     max_epochs, batch_size_max, augment_data, lr, save_dir, ckpt_path = \
         hparams_train.get('max_epochs'), \
         hparams_train.get('batch_size_max'), \
@@ -58,7 +49,7 @@ def train(config: DictConfig, model=None, filter_funcs=None, test=False, return_
     if model is None or isinstance(model, type):
         model = model if isinstance(model, type) else None
         model_class = get_model_class(config.model.name if model is None else model.__name__)
-        model = model_class(lr=lr, model=model, save_dir=save_dir, **hparams_model)
+        model = model_class(lr=lr, model=model, save_dir=save_dir, **hparams_lightning, **hparams_model)
         print(OmegaConf.to_yaml(config))
         print(model)
 
@@ -113,15 +104,23 @@ def train(config: DictConfig, model=None, filter_funcs=None, test=False, return_
 
 
 cs = ConfigStore.instance()
-cs.store(group="data", name="base_data", node=DataConfig, package="data")
-cs.store(group="train", name="base_train", node=TrainConfig, package="train")
-cs.store(group="test", name="base_test", node=TestConfig, package="test")
-cs.store(group="model", name="base_model_FillerKeepInput", node=FillerKeepInputConfig, package="model")
-cs.store(group="model", name="base_model_FillerKeepInputIgnoreColor", node=FillerKeepInputIgnoreColorConfig, package="model")
-cs.store(group="model", name="base_model_PixelEachSubstitutor", node=PixelEachSubstitutorConfig, package="model")
-cs.store(group="model", name="base_model_PixelEachSubstitutorRepeat", node=PixelEachSubstitutorRepeatConfig, package="model")
-cs.store(group="model", name="base_model_PixelEachSubstitutorNonColorEncoding", node=PixelEachSubstitutorNonColorEncodingConfig, package="model")
-cs.store(group="model", name="base_model_PixelEachSubstitutorRepeatNonColorEncoding", node=PixelEachSubstitutorRepeatNonColorEncodingConfig, package="model")
+cs.store(group="data", name="base_data", node=config.DataConfig, package="data")
+cs.store(group="train", name="base_train", node=config.TrainConfig, package="train")
+cs.store(group="test", name="base_test", node=config.TestConfig, package="test")
+
+cs.store(group="lightning", name="base_lightning_FillerKeepInput", node=config.FillerKeepInputLightningConfig, package="lightning")
+cs.store(group="lightning", name="base_lightning_FillerKeepInputIgnoreColor", node=config.FillerKeepInputIgnoreColorLightningConfig, package="lightning")
+cs.store(group="lightning", name="base_lightning_PixelEachSubstitutor", node=config.PixelEachSubstitutorLightningConfig, package="lightning")
+cs.store(group="lightning", name="base_lightning_PixelEachSubstitutorRepeat", node=config.PixelEachSubstitutorRepeatLightningConfig, package="lightning")
+cs.store(group="lightning", name="base_lightning_PixelEachSubstitutorNonColorEncoding", node=config.PixelEachSubstitutorNonColorEncodingLightningConfig, package="lightning")
+cs.store(group="lightning", name="base_lightning_PixelEachSubstitutorRepeatNonColorEncoding", node=config.PixelEachSubstitutorRepeatNonColorEncodingLightningConfig, package="lightning")
+
+cs.store(group="model", name="base_model_FillerKeepInput", node=config.FillerKeepInputConfig, package="model")
+cs.store(group="model", name="base_model_FillerKeepInputIgnoreColor", node=config.FillerKeepInputIgnoreColorConfig, package="model")
+cs.store(group="model", name="base_model_PixelEachSubstitutor", node=config.PixelEachSubstitutorConfig, package="model")
+cs.store(group="model", name="base_model_PixelEachSubstitutorRepeat", node=config.PixelEachSubstitutorRepeatConfig, package="model")
+cs.store(group="model", name="base_model_PixelEachSubstitutorNonColorEncoding", node=config.PixelEachSubstitutorNonColorEncodingConfig, package="model")
+cs.store(group="model", name="base_model_PixelEachSubstitutorRepeatNonColorEncoding", node=config.PixelEachSubstitutorRepeatNonColorEncodingConfig, package="model")
 
 
 @hydra.main(config_path=os.path.join('..', "configs"), config_name="train", version_base=None)

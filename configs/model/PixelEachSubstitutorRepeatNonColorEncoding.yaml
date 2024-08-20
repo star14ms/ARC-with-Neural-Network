@@ -19,12 +19,3 @@ params:
   C_dim_feedforward: 1
   dropout: 0.1
   n_class: 10
-
-  n_trials: 2
-  hyperparams_for_each_cell: []
-  max_epochs_for_each_task: 100
-  train_loss_threshold_to_stop: 0.01
-
-  max_AFS: 100 # AFS: Accuracy First Search
-  max_queue: 20
-  max_depth: 30

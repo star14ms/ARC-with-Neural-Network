@@ -4,8 +4,8 @@ params:
   n_range_search: 1
   max_width: 3
   max_height: 3
-  C_dims_encoded: [5]
-  L_dims_encoded: [32, 9]
+  C_dims_encoded: [3]
+  L_dims_encoded: [9]
   L_dims_decoded: [1]
   pad_class_initial: -1
   pad_num_layers: 1
@@ -19,12 +19,3 @@ params:
   C_dim_feedforward: 1
   dropout: 0.1
   n_class: 10
-
-  n_trials: 1
-  hyperparams_for_each_cell: []
-  max_epochs_for_each_task: 100
-  train_loss_threshold_to_stop: 0.01
-
-  max_AFS: 100 # AFS: Accuracy First Search
-  max_queue: 20
-  max_depth: 30

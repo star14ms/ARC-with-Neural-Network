@@ -1,0 +1,15 @@
+name: "PixelEachSubstitutorRepeatNonColorEncoding"
+
+params:
+  n_trials: 1
+  hyperparams_for_each_cell: []
+  train_loss_threshold_to_stop: 0.01
+
+  max_queue: 20
+  max_depth: 30
+  max_AFS: 100 # AFS: Accuracy First Search
+  max_epochs_per_AFS: 100
+
+  verbose: False
+  n_repeat_max_acc_threshold: 100
+  prior_to_corrected_pixels: False
