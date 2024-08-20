@@ -362,7 +362,7 @@ class PixelEachSubstitutorBase(LightningModuleBase):
 
 
 class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
-    def __init__(self, max_AFS=200, max_queue=20, max_depth=4, verbose=False, n_repeat_max_acc_threshold=30, *args, **kwargs):
+    def __init__(self, max_AFS=200, max_queue=20, max_depth=4, verbose=True, n_repeat_max_acc_threshold=30, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.max_AFS = max_AFS
         self.max_queue = max_queue
@@ -488,6 +488,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
         _acc_next = 0.0
         _total_loss = 0.0
         _n_sub_tasks_correct = 0
+        self.update_task_progress(id_prog_acc, n_queue=n_queue+len(checkpoints_new), completed=acc_max*100, description=f'  Acc {acc_max*100:.1f}%' if acc_max != 1 else f'  Acc 100%')
 
         for results, total_loss, acc_next, n_sub_tasks_correct, opt, n_epoch_trained in training_branch_generator:
             _acc_next = acc_next
@@ -588,17 +589,17 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                 y_batch.append(y)
 
             acc_next, n_sub_tasks_correct = self.get_avg_accuracy(zip(y_batch, t_batch), return_n_sub_tasks_correct=True)
-            n_repeat_max_acc = 0 if not acc_next <= acc_max or acc_next == 1 else (n_repeat_max_acc + 1)
-            acc_max = max(acc_max, acc_next)
-
-            if not recognize_input and acc_prev == accuracy0 and acc_max >= accuracy0:
-                label_input = False
-                recognize_input = True
-
+            n_repeat_max_acc = 0 if not acc_next < acc_max or acc_next == 1 else (n_repeat_max_acc + 1)
             self.update_task_progress(id_prog_e, e+1, loss=loss, depth=len(models), description=f'Epoch {e+1}/{max_epoch}')
 
-            if len(models) != 1 and n_repeat_max_acc == self.n_repeat_max_acc_threshold and len(models) <= 2:
+            if len(models) != 1 and acc_next <= acc_max and n_repeat_max_acc > self.n_repeat_max_acc_threshold:
                 break
+
+            if not recognize_input and acc_prev == accuracy0 and acc_next >= accuracy0:
+                label_input = False
+                recognize_input = True
+            acc_max = max(acc_max, acc_next)
+
             if acc_next == 1 or total_loss < 0.0001 or (acc_prev < acc_next and acc_max == acc_next and len(models) < self.max_depth):
                 yield results, total_loss, acc_next, n_sub_tasks_correct, opt, e+1
 

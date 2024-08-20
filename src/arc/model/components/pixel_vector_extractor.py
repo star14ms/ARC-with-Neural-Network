@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 
 class PixelVectorExtractor(nn.Module):
-    def __init__(self, n_range_search, max_width, max_height, pad_class_initial=0, pad_n_head=None, pad_dim_feedforward=1, dropout=0.1, pad_num_layers=1, bias=False, n_class=10):
+    def __init__(self, n_range_search, max_width, max_height, pad_class_initial=0, pad_n_head=None, pad_dim_feedforward=1, dropout=0.1, pad_num_layers=1, bias=True, n_class=10):
         super().__init__()
         self.n_range_search = n_range_search
         self.max_width = max_width
@@ -68,4 +68,4 @@ class PixelVectorExtractor(nn.Module):
         ### TODO: PixelVector = Pixels Located Relatively + Pixels Located Absolutely (363442ee, 63613498, aabf363d) + 3 Pixels with point-symmetric and line-symmetric relationships (3631a71a, 68b16354)
         ### TODO: PixelEachSubstitutorOverTime (045e512c, 22168020, 22eb0ac0, 3bd67248, 508bd3b6, 623ea044), 
 
-        return x.view(N*H*W, C, HL, WL)
+        return x.view(N*H*W, C, self.max_height, self.max_width)
