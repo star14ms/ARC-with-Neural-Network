@@ -7,7 +7,7 @@ from arc.model.components.cross_attn import MultiheadCrossAttentionLayer
 
 
 class ColorLocationEncoder(nn.Module): 
-    def __init__(self, C_dims_encoded, L_dims_encoded, bias=True):
+    def __init__(self, C_dims_encoded, L_dims_encoded, bias=False):
         super().__init__()
         L_dim = L_dims_encoded[0]
 
@@ -57,7 +57,7 @@ class ColorLocationEncoder(nn.Module):
 
 
 class Reasoner(nn.Module):
-    def __init__(self, VC_dim, VL_dim, L_num_layers=1, L_n_head=None, L_dim_feedforward=1, C_num_layers=1, C_n_head=None, C_dim_feedforward=1, dropout=0.1, bias=True):
+    def __init__(self, VC_dim, VL_dim, L_num_layers=1, L_n_head=None, L_dim_feedforward=1, C_num_layers=1, C_n_head=None, C_dim_feedforward=1, dropout=0.1, bias=False):
         super().__init__()
 
         self.attn_VL_self = nn.TransformerEncoder(
@@ -94,7 +94,7 @@ class Reasoner(nn.Module):
 
 
 class ColorLocationDecoder(nn.Module):
-    def __init__(self, VL_dim, VC_dim, L_dim, L_dims_decoded, L_dim_feedforward=1, C_dim_feedforward=1, dropout=0.1, bias=True):
+    def __init__(self, VL_dim, VC_dim, L_dim, L_dims_decoded, L_dim_feedforward=1, C_dim_feedforward=1, dropout=0.1, bias=False):
         super().__init__()
 
         self.attn_VL_VL =  MultiheadCrossAttentionLayer(VC_dim, VC_dim, L_dim_feedforward, dropout=dropout, batch_first=True, bias=bias)
@@ -152,7 +152,7 @@ class PixelEachSubstitutor(nn.Module):
             pad_dim_feedforward=pad_dim_feedforward, 
             dropout=dropout,
             pad_num_layers=pad_num_layers,
-            bias=True,
+            bias=False,
             pad_class_initial=pad_class_initial,
             n_class=n_class,
         )
@@ -160,7 +160,7 @@ class PixelEachSubstitutor(nn.Module):
         self.encoder = ColorLocationEncoder(
             C_dims_encoded=C_dims_encoded,
             L_dims_encoded=L_dims_encoded,
-            bias=True,
+            bias=False,
         )
 
         self.reasoner = Reasoner(
@@ -173,7 +173,7 @@ class PixelEachSubstitutor(nn.Module):
             C_n_head=C_n_head,
             C_dim_feedforward=C_dim_feedforward,
             dropout=dropout,
-            bias=True,
+            bias=False,
         )
         
         self.decoder = ColorLocationDecoder(
@@ -184,7 +184,7 @@ class PixelEachSubstitutor(nn.Module):
             L_dim_feedforward=L_dim_feedforward,
             C_dim_feedforward=C_dim_feedforward,
             dropout=dropout,
-            bias=True,
+            bias=False,
         )
 
     def forward(self, x, return_prob=False, **kwargs):

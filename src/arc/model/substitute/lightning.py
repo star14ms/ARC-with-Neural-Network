@@ -147,15 +147,15 @@ class LightningModuleBase(pl.LightningModule):
         self.test_results[task_id] = [self.test_results[task_id][idx] for idx in idxs_priority]
         self.test_results[task_id] = list(zip(*self.test_results[task_id]))
 
-    def print_and_write(self, log, end='\n'):
-        print(log, end=end)
+    def print_and_write(self, *objects, end='\n'):
+        print(*objects, end=end)
         if self.log_file is not None:
             with open(self.log_file, 'a') as f:
-                print(log, end=end, file=f)
+                print(objects, end=end, file=f)
 
 
 class PixelEachSubstitutorBase(LightningModuleBase):
-    def __init__(self, lr=0.001, n_trials=5, save_dir=None, hyperparams_for_each_cell=[], max_epochs_for_each_task=300, train_loss_threshold_to_stop=0.01, *args, **kwargs):
+    def __init__(self, lr=0.001, n_trials=5, save_dir=None, hyperparams_for_each_cell=[], max_epochs_for_each_task=100, train_loss_threshold_to_stop=0.01, *args, **kwargs):
         super().__init__(lr=lr, save_dir=save_dir, *args, **kwargs)
         
         if self.top_k_submission > n_trials:
@@ -395,6 +395,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                 opt = opt_prev
 
             return models, opt
+
         n_sub_tasks_total = sum([len(b[0]) for b in batches_train])
 
         accuracy0, answer_map0 = self.get_avg_accuracy(batches_train, return_corrects_info=True)
@@ -415,7 +416,6 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
         id_prog_afs = self.progress._add_task(self.max_AFS, '  AFS {}'.format(f'0/{self.max_AFS}'))
         next_id = 0
         completed = False
-        n_perfect_extension = 0
         key_sorting = lambda x: (x['is_corrected_pixels_maintained'], x['acc_max']) if self.prior_to_corrected_pixels else (x['acc_max'])
 
         for i in range(self.max_AFS): # AFS: Accuracy First Search
@@ -443,20 +443,17 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                 checkpoints_new, is_extended_correctly, acc_next, total_loss, n_sub_tasks_correct = result
 
                 if is_extended_correctly:
-                    n_perfect_extension += 1
-
-                    if n_perfect_extension == 4:
-                        completed = True
+                    completed = True
 
                 # if len(checkpoints_new) > 0 and all([not x['is_corrected_pixels_maintained'] for x in checkpoints_new]):
                 #     checkpoints_new = [checkpoints_new[-1]]
                     # min_acc = min([x['acc_prev'] for x in checkpoints_new])
                     # checkpoints_new = [x for x in checkpoints_new if x['acc_prev'] == min_acc or x['is_corrected_pixels_maintained']]
 
-                print([model.instance_id for model in models])
-                print(is_corrected_pixels_maintained, round(acc_prev.item()*100, 2), '->')
-                print([(x['is_corrected_pixels_maintained'], round(x['acc_prev'].item()*100, 2)) for x in checkpoints_new])
-                print()
+                self.print_and_write([model.instance_id for model in models])
+                self.print_and_write(is_corrected_pixels_maintained, round(acc_prev.item()*100, 2), '->')
+                self.print_and_write([(x['is_corrected_pixels_maintained'], round(x['acc_prev'].item()*100, 2), x['n_epochs_trained'][-1]) for x in checkpoints_new])
+                self.print_and_write()
                 queue.extend(checkpoints_new)
 
                 if completed or (len(queue) > 0 and acc_next >= acc_max):
@@ -567,9 +564,10 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                 for depth, model in enumerate(models):
                     y = model(y, epoch=e, batch_idx=i, return_prob=False if depth == len(models)-1 else True)
 
-                    if depth != len(models)-1:
-                        _, max_indices = torch.max(y, dim=1)
-                        y = torch.nn.functional.one_hot(max_indices, num_classes=y.size(1)).to(x.dtype).permute(0, 3, 1, 2)
+                    # if depth != len(models)-1:
+                    #     _, max_indices = torch.max(y, dim=1)
+                    #     y = torch.nn.functional.one_hot(max_indices, num_classes=y.size(1)).to(x.dtype).permute(0, 3, 1, 2)
+
                 loss = self.loss_fn(y, t if not label_input else x)
 
                 opt.zero_grad()
@@ -592,16 +590,16 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                 y_batch.append(y)
 
             acc_next, n_sub_tasks_correct = self.get_avg_accuracy(zip(y_batch, t_batch), return_n_sub_tasks_correct=True)
-            n_repeat_max_acc = 0 if not acc_next < acc_max or acc_next == 1 else (n_repeat_max_acc + 1)
+            n_repeat_max_acc = 0 if acc_next >= acc_max else (n_repeat_max_acc + 1)
             self.update_task_progress(id_prog_e, e+1, loss=loss, depth=len(models), description=f'Epoch {e+1}/{max_epoch}')
+            acc_max = max(acc_max, acc_next)
 
-            if len(models) != 1 and acc_prev < acc_max and n_repeat_max_acc > self.n_repeat_max_acc_threshold:
+            if len(models) != 1 and n_repeat_max_acc > self.n_repeat_max_acc_threshold:
                 break
 
             if not recognize_input and acc_prev == accuracy0 and acc_next >= accuracy0:
                 label_input = False
                 recognize_input = True
-            acc_max = max(acc_max, acc_next)
 
             if (acc_next == 1 and total_loss < self.train_loss_threshold_to_stop) or (acc_prev < acc_next and acc_max == acc_next and len(models) < self.max_depth):
                 yield results, total_loss, acc_next, n_sub_tasks_correct, opt, e+1
