@@ -6,21 +6,10 @@ from arc.model.components.pixel_vector_extractor import PixelVectorExtractor
 
 
 class LocationEncoder(nn.Module): 
-    def __init__(self, L_dims_encoded, bias=False,):
+    def __init__(self, L_dims_encoded, bias=False):
         super().__init__()
         # self.conv = nn.Conv2d(in_channels=1, out_channels=8, kernel_size=3, padding=1, bias=bias)
         # L_dims_encoded[0] *= 8
-
-        self.attn_V_self = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(9, 9, 1, dropout=0.1, batch_first=True, bias=bias),
-            num_layers=1,
-            enable_nested_tensor=False,
-        )
-        self.attn_C_self = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(10, 10, 1, dropout=0.1, batch_first=True, bias=bias),
-            num_layers=1,
-            enable_nested_tensor=False,
-        )
 
         self.ff_L = nn.Sequential()
         for i in range(len(L_dims_encoded)-1):
@@ -40,7 +29,7 @@ class LocationEncoder(nn.Module):
         return x
 
 
-class ReasonerNonColorEncoded(nn.Module):
+class ReasonerNonColorEncoding(nn.Module):
     def __init__(self, VL_dim, L_dims_decoded, L_num_layers=6, L_n_head=None, L_dim_feedforward=1, C_num_layers=1, C_n_head=None, C_dim_feedforward=1, dropout=0.1, bias=False, n_class=10):
         super().__init__()
         L_dims_decoded =  [VL_dim] + L_dims_decoded
@@ -77,10 +66,10 @@ class ReasonerNonColorEncoded(nn.Module):
 
 
 class PixelEachSubstitutorNonColorEncoding(nn.Module):
-    def __init__(self, n_range_search=-1, max_width=61, max_height=61, L_dims_encoded=[512, 128, 64], L_dims_decoded=[32, 8, 1], pad_class_initial=0, pad_num_layers=1, pad_n_head=None, pad_dim_feedforward=1, encode_location=False, L_num_layers=6, L_n_head=None, L_dim_feedforward=1, C_num_layers=1, C_n_head=None, C_dim_feedforward=1, dropout=0.1, n_class=10):
+    def __init__(self, n_range_search=-1, max_width=61, max_height=61, L_dims_encoded=[512, 128, 64], L_dims_decoded=[32, 8, 1], pad_class_initial=0, pad_num_layers=1, pad_n_head=None, pad_dim_feedforward=1, L_encode=False, C_encode=None, C_dims_encoded=[], L_num_layers=6, L_n_head=None, L_dim_feedforward=1, C_num_layers=1, C_n_head=None, C_dim_feedforward=1, dropout=0.1, n_class=10):
         super().__init__()
         assert n_range_search != -1 and max_width >= 1 + 2*n_range_search and max_height >= 1 + 2*n_range_search
-        self.encode_location = encode_location
+        self.L_encode = L_encode
         L_dim = max_width * max_height
         L_dims_encoded = [L_dim] + L_dims_encoded
 
@@ -97,13 +86,13 @@ class PixelEachSubstitutorNonColorEncoding(nn.Module):
             n_class=n_class,
         )
         
-        if self.encode_location:
+        if self.L_encode:
             self.encoder = LocationEncoder(
                 L_dims_encoded=L_dims_encoded,
                 bias=False,
             )
 
-        self.reasoner = ReasonerNonColorEncoded(
+        self.reasoner = ReasonerNonColorEncoding(
             VL_dim=L_dims_encoded[-1],
             L_dims_decoded=L_dims_decoded, 
             L_num_layers=L_num_layers,
@@ -121,7 +110,7 @@ class PixelEachSubstitutorNonColorEncoding(nn.Module):
         N, C, H, W = x.shape
 
         x = self.abstractor(x)
-        mem = self.encoder(x) if self.encode_location else x
+        mem = self.encoder(x) if self.L_encode else x.reshape(N, C, -1)
         x = self.reasoner(mem)
         x = x.view(N, H, W, C).permute(0, 3, 1, 2) # [N, C, H, W]
 

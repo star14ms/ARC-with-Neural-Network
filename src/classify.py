@@ -199,7 +199,7 @@ class ARCDataClassifier:
         return partial(ARCDataClassifier.is_shape_size_in, start=start, stop=stop, bool=bool, *args, **kwargs)
 
 
-
+# *NNNNNNNN: Deactivate the task
 tasks_fill_1 = '''\
 4258a5f9 ce22a75a b60334d2 b1948b0a c8f0f002 f76d97a5 d90796e8 25d8a9c8 0d3d703e 3aa6fb7a a699fb00 0ca9ddb6 d364b489 95990924'''.split()
 
@@ -218,16 +218,19 @@ d9f24cd1 *3bd67248 *5c0a986e *7ddcd7ec
 # *d07ae81c *e21d9049 *855e0971 *bd4472b8 *264363fd *ec883f72 *25d487eb *82819916 *6d58a25d *6e19193c *d43fd935 *1f0c79e5 *b8cdaf2b *8d510a79 *41e4d17e *623ea044 *a78176bb *ea786f4a *e40b9e2f
 
 
+def filter_data_codes(data_codes: list[str]):
+    return tuple(filter(lambda x: len(x) == 8, data_codes))
+
+
 def get_filter_funcs():
     filter_funcs = (
-
         ARCDataClassifier.in_data_codes_f([
             # '22168020',
-            *tuple(filter(lambda x: len(x) == 8, tasks_sequential_simple_line)),
-            # *tuple(filter(lambda x: len(x) == 8, tasks_fulid)),
-            # *tuple(filter(lambda x: len(x) == 8, tasks_fill_1)),
-            # *tuple(filter(lambda x: len(x) == 8, tasks_fill_2)),
-            # *tuple(filter(lambda x: len(x) == 8, tasks_solvable_with_3x3_kernel)),
+            *filter_data_codes(tasks_sequential_simple_line),
+            # *filter_data_codes(tasks_fulid),
+            # *filter_data_codes(tasks_fill_1),
+            # *filter_data_codes(tasks_fill_2),
+            # *filter_data_codes(tasks_solvable_with_3x3_kernel),
         ], reorder=True),
         # ARCDataClassifier.is_same_shape_f(True),
         # ARCDataClassifier.is_shape_size_in_f(start=1, stop=21),

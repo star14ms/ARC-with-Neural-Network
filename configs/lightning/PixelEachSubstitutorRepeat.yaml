@@ -2,13 +2,27 @@ name: "PixelEachSubstitutorRepeat"
 
 params:
   n_trials: 1
-  hyperparams_for_each_cell: []
+  hyperparams_for_each_cell: [
+    # {
+    #   n_range_search: 0,
+    #   max_width: 1,
+    #   max_height: 1,
+    #   L_dims_encoded: [1],
+    # },
+    # {
+    #   n_range_search: 1,
+    #   max_width: 3,
+    #   max_height: 3,
+    #   L_dims_encoded: [9],
+    # },
+  ]
   train_loss_threshold_to_stop: 0.01
 
   max_queue: 20
   max_depth: 30
   max_AFS: 100 # AFS: Accuracy First Search
   max_epochs_per_AFS: 100
+  max_epochs_initial: 300
 
   verbose: False
   n_repeat_max_acc_threshold: 30

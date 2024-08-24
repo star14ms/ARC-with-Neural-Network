@@ -64,7 +64,7 @@ def train(config: DictConfig, model=None, filter_funcs=None, test=False, return_
     })
 
     trainer = TrainerCustom(
-        accelerator='cpu',
+        # accelerator='cpu',
         max_epochs=max_epochs, 
         logger=logger, 
         log_every_n_steps=1, 
@@ -112,15 +112,11 @@ cs.store(group="lightning", name="base_lightning_FillerKeepInput", node=config.F
 cs.store(group="lightning", name="base_lightning_FillerKeepInputIgnoreColor", node=config.FillerKeepInputIgnoreColorLightningConfig, package="lightning")
 cs.store(group="lightning", name="base_lightning_PixelEachSubstitutor", node=config.PixelEachSubstitutorLightningConfig, package="lightning")
 cs.store(group="lightning", name="base_lightning_PixelEachSubstitutorRepeat", node=config.PixelEachSubstitutorRepeatLightningConfig, package="lightning")
-cs.store(group="lightning", name="base_lightning_PixelEachSubstitutorNonColorEncoding", node=config.PixelEachSubstitutorNonColorEncodingLightningConfig, package="lightning")
-cs.store(group="lightning", name="base_lightning_PixelEachSubstitutorRepeatNonColorEncoding", node=config.PixelEachSubstitutorRepeatNonColorEncodingLightningConfig, package="lightning")
 
 cs.store(group="model", name="base_model_FillerKeepInput", node=config.FillerKeepInputConfig, package="model")
 cs.store(group="model", name="base_model_FillerKeepInputIgnoreColor", node=config.FillerKeepInputIgnoreColorConfig, package="model")
 cs.store(group="model", name="base_model_PixelEachSubstitutor", node=config.PixelEachSubstitutorConfig, package="model")
 cs.store(group="model", name="base_model_PixelEachSubstitutorRepeat", node=config.PixelEachSubstitutorRepeatConfig, package="model")
-cs.store(group="model", name="base_model_PixelEachSubstitutorNonColorEncoding", node=config.PixelEachSubstitutorNonColorEncodingConfig, package="model")
-cs.store(group="model", name="base_model_PixelEachSubstitutorRepeatNonColorEncoding", node=config.PixelEachSubstitutorRepeatNonColorEncodingConfig, package="model")
 
 
 @hydra.main(config_path=os.path.join('..', "configs"), config_name="train", version_base=None)

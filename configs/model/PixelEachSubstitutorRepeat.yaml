@@ -4,7 +4,9 @@ params:
   n_range_search: 1
   max_width: 3
   max_height: 3
-  C_dims_encoded: [3]
+  C_encode: True
+  C_dims_encoded: [2]
+  L_encode: True
   L_dims_encoded: [9]
   L_dims_decoded: [1]
   pad_class_initial: -1

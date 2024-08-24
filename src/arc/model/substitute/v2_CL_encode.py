@@ -94,13 +94,19 @@ class Reasoner(nn.Module):
 
 
 class ColorLocationDecoder(nn.Module):
-    def __init__(self, VL_dim, VC_dim, L_dim, L_dims_decoded, L_dim_feedforward=1, C_dim_feedforward=1, dropout=0.1, bias=False):
+    def __init__(self, VL_dim, VC_dim, L_dim, C_dim, L_dims_decoded, L_dim_feedforward=1, C_dim_feedforward=1, dropout=0.1, bias=False):
         super().__init__()
 
         self.attn_VL_VL =  MultiheadCrossAttentionLayer(VC_dim, VC_dim, L_dim_feedforward, dropout=dropout, batch_first=True, bias=bias)
         self.attn_L_VL =  MultiheadCrossAttentionLayer(VC_dim, VC_dim, L_dim_feedforward, dropout=dropout, batch_first=True, bias=bias)
         self.attn_VC_L =  MultiheadCrossAttentionLayer(L_dim, L_dim, L_dim_feedforward, dropout=dropout, batch_first=True, bias=bias)
         self.attn_C_L =  MultiheadCrossAttentionLayer(L_dim, L_dim, C_dim_feedforward,  dropout=dropout, batch_first=True, bias=bias)
+        
+        self.attn_C_self = nn.TransformerEncoder(
+            nn.TransformerEncoderLayer(C_dim, C_dim, C_dim_feedforward, dropout=0.1, batch_first=True, bias=bias),
+            num_layers=1,
+            enable_nested_tensor=False,
+        )
 
         self.ff_L = nn.Sequential()
         for i in range(len(L_dims_decoded)-1):
@@ -130,13 +136,14 @@ class ColorLocationDecoder(nn.Module):
         x = x.view(NS, C, HL*WL)
         x_VC_mem = self.attn_VC_L(x_VC, x_VC_mem) # [VC, L] < [VC, L]
         y = self.attn_C_L(x, x_VC_mem) # [C, L] < [VC, L] # (🟦 -> 🟧)
+        y = self.attn_C_self(y.transpose(1, 2)).transpose(1, 2) # [L, C] -> [L, C] # Detect Emerging Color
         y = self.ff_L(y) # [C, L] -> [C, 1]
 
         return y
 
 
 class PixelEachSubstitutor(nn.Module):
-    def __init__(self, n_range_search=-1, max_width=61, max_height=61, C_dims_encoded=[2], L_dims_encoded=[9], L_dims_decoded=[1], pad_class_initial=0, pad_num_layers=1, pad_n_head=None, pad_dim_feedforward=1, L_num_layers=6, L_n_head=None, L_dim_feedforward=1, C_num_layers=1, C_n_head=None, C_dim_feedforward=1, dropout=0.1, n_class=10):
+    def __init__(self, n_range_search=-1, max_width=61, max_height=61, C_dims_encoded=[2], L_dims_encoded=[9], L_dims_decoded=[1], pad_class_initial=0, pad_num_layers=1, pad_n_head=None, pad_dim_feedforward=1, L_num_layers=6, L_n_head=None, L_dim_feedforward=1, C_num_layers=1, C_n_head=None, C_dim_feedforward=1, dropout=0.1, n_class=10, C_encode=None, L_encode=None):
         super().__init__()
         assert n_range_search != -1 and max_width >= 1 + 2*n_range_search and max_height >= 1 + 2*n_range_search
         L_dim = max_width * max_height
@@ -180,6 +187,7 @@ class PixelEachSubstitutor(nn.Module):
             VL_dim=L_dims_encoded[-1],
             VC_dim=C_dims_encoded[-1],
             L_dim=L_dim,
+            C_dim=n_class,
             L_dims_decoded=L_dims_decoded,
             L_dim_feedforward=L_dim_feedforward,
             C_dim_feedforward=C_dim_feedforward,

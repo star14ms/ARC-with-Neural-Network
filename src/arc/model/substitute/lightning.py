@@ -8,8 +8,9 @@ import copy
 import warnings
 from rich import print
 
-from arc.model.substitute.base import PixelEachSubstitutorNonColorEncoding
-from arc.model.substitute.color_encode import PixelEachSubstitutor
+from arc.model.substitute.v0_no_encode import PixelEachSubstitutorNonColorEncoding
+from arc.model.substitute.v1_C_encode import PixelEachSubstitutor as PixelEachSubstitutorColorEncoding
+from arc.model.substitute.v2_CL_encode import PixelEachSubstitutor
 from arc.preprocess import one_hot_encode
 from arc.utils.visualize import visualize_image_using_emoji, plot_xytc
 from arc.utils.print import is_notebook
@@ -151,24 +152,36 @@ class LightningModuleBase(pl.LightningModule):
         print(*objects, end=end)
         if self.log_file is not None:
             with open(self.log_file, 'a') as f:
-                print(objects, end=end, file=f)
+                print(*objects, end=end, file=f)
 
 
 class PixelEachSubstitutorBase(LightningModuleBase):
-    def __init__(self, lr=0.001, n_trials=5, save_dir=None, hyperparams_for_each_cell=[], max_epochs_for_each_task=100, train_loss_threshold_to_stop=0.01, *args, **kwargs):
+    def __init__(self, lr=0.01, save_dir=None, model=None, n_trials=2, hyperparams_for_each_cell=[], max_epochs_for_each_task=100, max_epochs_initial=1000, train_loss_threshold_to_stop=0.01, *args, **kwargs):
         super().__init__(lr=lr, save_dir=save_dir, *args, **kwargs)
-        
-        if self.top_k_submission > n_trials:
-            warnings.warn(f'top_k_submission should be less than or equal to n_trials. top_k_submission is set to {n_trials}.')
 
+        if model is not None:
+            model_class = model
+        elif not kwargs.get('C_encode', True):
+            model_class = PixelEachSubstitutorNonColorEncoding
+        elif not kwargs.get('L_encode', True):
+            model_class = PixelEachSubstitutorColorEncoding
+        else:
+            model_class = PixelEachSubstitutor
+
+        self.model_class = model_class
         self.model = self.model_class(*args, **kwargs)
         self.model_args = args
         self.model_kwargs = kwargs
         self.loss_fn = nn.CrossEntropyLoss()
 
+        if self.top_k_submission > n_trials:
+            self.top_k_submission = n_trials
+            warnings.warn(f'top_k_submission should be less than or equal to n_trials. top_k_submission is set to {n_trials}.')
+
         self.n_trials = n_trials
-        self.params_for_each_cell = [{}] + (hyperparams_for_each_cell if hyperparams_for_each_cell else [])
+        self.params_for_each_cell = ([{}] + (hyperparams_for_each_cell if hyperparams_for_each_cell else [{}])) if 'Repeat' in self.__class__.__name__ else hyperparams_for_each_cell
         self.max_epochs_for_each_task = max_epochs_for_each_task
+        self.max_epochs_initial = max_epochs_initial
         self.train_loss_threshold_to_stop = train_loss_threshold_to_stop
 
     def training_step(self, batches):
@@ -341,7 +354,7 @@ class PixelEachSubstitutorBase(LightningModuleBase):
                 'results': self.test_results,
                 'hparams': {**self.model_kwargs, 'hyperparams_for_each_cell': self.params_for_each_cell},
             }
-   
+
     def get_task_result(self, task_id, n_sub_tasks):
         is_task_correct = True
         n_trials_correct = 0
@@ -349,7 +362,7 @@ class PixelEachSubstitutorBase(LightningModuleBase):
 
         for subtask in self.test_results[task_id]:
             solved = False
-            for i in range(min(self.top_k_submission, self.n_trials)):
+            for i in range(self.top_k_submission):
                 correct_pixels = subtask[i]['correct_pixels']
                 if all(all(pixel == 3 for pixel in row) for row in correct_pixels):
                     n_trials_correct += 1
@@ -378,14 +391,14 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
             nonlocal next_id
             if len(models_prev) == 0 or (idx_cell >= 1 and extend): # models_prev[0] should train continuously
                 # Create new model
-                varied_kwargs = self.params_for_each_cell[idx_cell] if idx_cell >= 1 else {}
+                varied_kwargs = self.params_for_each_cell[idx_cell if len(models_prev) != 0 else idx_cell+1]
                 model = self.model_class(*self.model_args, **{**self.model_kwargs, **varied_kwargs})
                 model.to(batches_train[0][0].device)
                 model.id = idx_cell
                 model.instance_id = (next_id := next_id + 1)
                 models = models_prev + [model]
                 opt = torch.optim.Adam(model.parameters(), lr=self.lr)
-            elif acc_next == 1 or (idx_cell == 0):
+            elif acc_prev == 1 or (idx_cell == 0):
                 # Lengthen the last model
                 models = models_prev + [models_prev[-1]]
                 opt = opt_prev
@@ -393,6 +406,15 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                 # Continue training
                 models = models_prev
                 opt = opt_prev
+
+            device = batches_train[0][0].device
+            for model in models:
+                model.to(device)
+
+            for state in opt.state.values():
+                for k, v in state.items():
+                    if isinstance(v, torch.Tensor):
+                        state[k] = v.to(device)
 
             return models, opt
 
@@ -435,15 +457,12 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
             for idx_cell in range(len(self.params_for_each_cell)):
                 models, opt = __build_models()
 
-                max_epoch = self.max_epochs_per_AFS * (2 if len(models) == 1 else 1)
+                max_epoch = self.max_epochs_per_AFS if len(models) != 1 else self.max_epochs_initial
                 id_prog_e = self.progress._add_task(max_epoch, f'Epoch 0/{max_epoch}')
                 training_branch_generator = self._training_get_checkpoint_generaotr(models, batches_train, opt, acc_prev, acc_max, accuracy0, max_epoch, id_prog_e)
 
                 result = self._training_step_generate_checkpoints(models, opt, training_branch_generator, checkpoint, id_prog_acc, len(queue), idx_cell)
-                checkpoints_new, is_extended_correctly, acc_next, total_loss, n_sub_tasks_correct = result
-
-                if is_extended_correctly:
-                    completed = True
+                checkpoints_new, completed, acc_next, total_loss, n_sub_tasks_correct = result
 
                 # if len(checkpoints_new) > 0 and all([not x['is_corrected_pixels_maintained'] for x in checkpoints_new]):
                 #     checkpoints_new = [checkpoints_new[-1]]
@@ -456,7 +475,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                 self.print_and_write()
                 queue.extend(checkpoints_new)
 
-                if completed or (len(queue) > 0 and acc_next >= acc_max):
+                if completed or (len(models) > 1 and len(queue) > 0 and acc_next >= acc_max) or (len(models) == 1 and idx_cell == len(self.params_for_each_cell)-2):
                     break
 
             if len(queue) == 0:
@@ -484,7 +503,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
             checkpoint.get('is_corrected_pixels_maintained'), \
 
         checkpoints_new = []
-        is_extended_correctly = False
+        completed = False
         _acc_next = 0.0
         _total_loss = 0.0
         _n_sub_tasks_correct = 0
@@ -517,8 +536,8 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                     'extend': True,
                 }
 
-                if acc_next == 1 and acc_prev == acc_next:
-                    is_extended_correctly = True
+                if acc_next == 1 and (acc_prev == acc_next or len(models) == 1):
+                    completed = True
 
                     checkpoints_new.append({
                         'models': models,
@@ -545,7 +564,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                         **checkpoint_kwargs
                     })
                     
-        return checkpoints_new, is_extended_correctly, _acc_next, _total_loss, _n_sub_tasks_correct
+        return checkpoints_new, completed, _acc_next, _total_loss, _n_sub_tasks_correct
 
     def _training_get_checkpoint_generaotr(self, models: nn.Module, batches_train, opt: torch.optim.Optimizer, acc_prev: float, acc_max: float, accuracy0: float, max_epoch: int, id_prog_e: int):
         t_batch = [batch[1] for batch in batches_train]
@@ -553,6 +572,8 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
         n_repeat_max_acc = 0
         label_input = True if acc_prev == accuracy0 and acc_max < accuracy0 else False
         recognize_input = False
+        loss_prev = 0
+        n_times_constant_loss = 0
 
         for e in range(max_epoch):
             results = []
@@ -566,7 +587,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
 
                     # if depth != len(models)-1:
                     #     _, max_indices = torch.max(y, dim=1)
-                    #     y = torch.nn.functional.one_hot(max_indices, num_classes=y.size(1)).to(x.dtype).permute(0, 3, 1, 2)
+                    #     y = torch.nn.functional.one_hot(max_indices, num_classes=y.size(1)).to(x.device, x.dtype).permute(0, 3, 1, 2)
 
                 loss = self.loss_fn(y, t if not label_input else x)
 
@@ -594,7 +615,13 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
             self.update_task_progress(id_prog_e, e+1, loss=loss, depth=len(models), description=f'Epoch {e+1}/{max_epoch}')
             acc_max = max(acc_max, acc_next)
 
-            if len(models) != 1 and n_repeat_max_acc > self.n_repeat_max_acc_threshold:
+            if loss_prev == total_loss:
+                n_times_constant_loss += 1
+            else:
+                n_times_constant_loss = 0
+                loss_prev = total_loss
+
+            if (len(models) != 1 and n_repeat_max_acc > self.n_repeat_max_acc_threshold) or (total_loss > 0.5 and n_times_constant_loss == 10):
                 break
 
             if not recognize_input and acc_prev == accuracy0 and acc_next >= accuracy0:
@@ -619,8 +646,9 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
         ys = []
         for model in self.models:
             model.eval()
-        for i in range(max_depth-len(self.models)):
-            self.models.append(self.models[-1])
+        if len(self.models) != 1:
+            for i in range(max_depth-len(self.models)):
+                self.models.append(self.models[-1])
 
         for i, (x, t) in enumerate(batches_test):
             y = x
@@ -630,7 +658,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
 
                 if depth != len(self.models)-1:
                     _, max_indices = torch.max(y, dim=1)
-                    y = torch.nn.functional.one_hot(max_indices, num_classes=y.size(1)).to(x.dtype).permute(0, 3, 1, 2)
+                    y = torch.nn.functional.one_hot(max_indices, num_classes=y.size(1)).to(x.device, x.dtype).permute(0, 3, 1, 2)
 
             loss = self.loss_fn(y, t)
             total_loss += loss
@@ -758,28 +786,14 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
 
 
 class PixelEachSubstitutorL(PixelEachSubstitutorBase):
-    def __init__(self, model=None, *args, **kwargs):
-        self.model_class = model if model is not None else PixelEachSubstitutor
+    def __init__(self, n_trials=2, hyperparams_for_each_cell=[], *args, **kwargs):
+        if len(hyperparams_for_each_cell) < n_trials:
+            n_trials = len(hyperparams_for_each_cell)
+            warnings.warn(f'hyperparams_for_each_cell should have at least n_trials elements. n_trials is set to {len(hyperparams_for_each_cell)}.')
 
-        super().__init__(*args, **kwargs)
+        super().__init__(n_trials=n_trials, hyperparams_for_each_cell=hyperparams_for_each_cell, *args, **kwargs)
 
 
 class PixelEachSubstitutorRepeatL(PixelEachSubstitutorRepeatBase):
-    def __init__(self, model=None, *args, **kwargs):
-        self.model_class = model if model is not None else PixelEachSubstitutor
-
-        super().__init__(*args, **kwargs)
-
-
-class PixelEachSubstitutorNonColorEncodingL(PixelEachSubstitutorBase):
-    def __init__(self, model=None, *args, **kwargs):
-        self.model_class = model if model is not None else PixelEachSubstitutorNonColorEncoding
-
-        super().__init__(*args, **kwargs)
-
-
-class PixelEachSubstitutorRepeatNonColorEncodingL(PixelEachSubstitutorRepeatBase):
-    def __init__(self, model=None, *args, **kwargs):
-        self.model_class = model if model is not None else PixelEachSubstitutorNonColorEncoding
-
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

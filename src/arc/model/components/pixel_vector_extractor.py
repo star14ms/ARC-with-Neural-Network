@@ -11,11 +11,11 @@ class PixelVectorExtractor(nn.Module):
         self.max_height = max_height
         self.pad_class_initial = pad_class_initial
 
-        self.attn_C = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(n_class+1, pad_n_head if pad_n_head is not None else n_class+1, pad_dim_feedforward, dropout=dropout, batch_first=True, bias=bias),
-            num_layers=pad_num_layers,
-            enable_nested_tensor=False,
-        )
+        # self.attn_C = nn.TransformerEncoder(
+        #     nn.TransformerEncoderLayer(n_class+1, pad_n_head if pad_n_head is not None else n_class+1, pad_dim_feedforward, dropout=dropout, batch_first=True, bias=bias),
+        #     num_layers=pad_num_layers,
+        #     enable_nested_tensor=False,
+        # )
 
     def forward(self, x):
         N, C, H, W = x.shape
@@ -49,21 +49,21 @@ class PixelVectorExtractor(nn.Module):
         x_max[:,:HL,:WL] = x
         x = x_max.view(N*H*W, C, -1)
 
-        # Predict Padding Colors
-        if self.n_range_search != 0:
-            x = x.transpose(1, 2)
-            mask_to_inf = (x == 0).all(dim=2)
-            mask_to_0 = (x[:, :, -1:] == 1)
-            colored_padding = self.attn_C(x, src_key_padding_mask=mask_to_inf) # [L, C+1] <- [L, C+1]
-            colored_padding = colored_padding[:, :, :-1].softmax(dim=2)
-            colored_padding = colored_padding * mask_to_0
-            x = x[:, :, :-1] + colored_padding
-            x = x.transpose(1, 2)
-            C = x.shape[1]
-
+        # # Predict Padding Colors
         # if self.n_range_search != 0:
-        #     x = x[:, :-1] # [N*H*W, C, L]
+        #     x = x.transpose(1, 2)
+        #     mask_to_inf = (x == 0).all(dim=2)
+        #     mask_to_0 = (x[:, :, -1:] == 1)
+        #     colored_padding = self.attn_C(x, src_key_padding_mask=mask_to_inf) # [L, C+1] <- [L, C+1]
+        #     colored_padding = colored_padding[:, :, :-1].softmax(dim=2)
+        #     colored_padding = colored_padding * mask_to_0
+        #     x = x[:, :, :-1] + colored_padding
+        #     x = x.transpose(1, 2)
         #     C = x.shape[1]
+
+        if self.n_range_search != 0:
+            x = x[:, :-1] # [N*H*W, C, L]
+            C = x.shape[1]
 
         ### TODO: PixelVector = Pixels Located Relatively + Pixels Located Absolutely (363442ee, 63613498, aabf363d) + 3 Pixels with point-symmetric and line-symmetric relationships (3631a71a, 68b16354)
         ### TODO: PixelEachSubstitutorOverTime (045e512c, 22168020, 22eb0ac0, 3bd67248, 508bd3b6, 623ea044), 

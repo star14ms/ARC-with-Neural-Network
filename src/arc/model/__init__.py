@@ -11,17 +11,13 @@ def get_model_class(model_name: str):
     from arc.model.substitute.lightning import (
         PixelEachSubstitutorL,
         PixelEachSubstitutorRepeatL,
-        PixelEachSubstitutorNonColorEncodingL,
-        PixelEachSubstitutorRepeatNonColorEncodingL,
     )
 
     model_classes = [
         FillerKeepInputL,
         FillerKeepInputIgnoreColorL,
         PixelEachSubstitutorL,
-        PixelEachSubstitutorNonColorEncodingL,
         PixelEachSubstitutorRepeatL,
-        PixelEachSubstitutorRepeatNonColorEncodingL,
     ]
 
     for model_class in model_classes:
@@ -75,11 +71,12 @@ class FillerKeepInputIgnoreColorConfig:
     reduced_channels_decoder: List[int] = (128, 32)
 
 @dataclass
-class PixelEachSubstitutorBaseConfig:
+class PixelEachSubstitutorConfig:
     n_range_search: int = 1
     max_width: int = 3
     max_height: int = 3
-    
+
+    L_encode: bool = True
     L_dims_encoded: List[int] = (9,)
     L_dims_decoded: List[int] = (1,)
 
@@ -99,28 +96,10 @@ class PixelEachSubstitutorBaseConfig:
     n_class: int = 10
 
 @dataclass
-class PixelEachSubstitutorRepeatConfig(PixelEachSubstitutorBaseConfig):
+class PixelEachSubstitutorRepeatConfig(PixelEachSubstitutorConfig):
     max_AFS: int = 30
     max_queue: int = 20
     max_depth: int = 4
-
-@dataclass
-class PixelEachSubstitutorConfig(PixelEachSubstitutorBaseConfig):
-    C_dims_encoded: List[int] = (2,)
-    
-@dataclass
-class PixelEachSubstitutorRepeatConfig(PixelEachSubstitutorRepeatConfig):
-    C_dims_encoded: List[int] = (2,)
-
-@dataclass
-class PixelEachSubstitutorNonColorEncodingConfig(PixelEachSubstitutorBaseConfig):
-    encode_location: bool = True
-    L_dims_encoded: List[int] = (32, 16)
-
-@dataclass
-class PixelEachSubstitutorRepeatNonColorEncodingConfig(PixelEachSubstitutorRepeatConfig):
-    encode_location: bool = True
-    L_dims_encoded: List[int] = (32, 16)
 
 ################################################################################################################################################################################################################################################################
 
@@ -131,7 +110,6 @@ class FillerKeepInputLightningConfig:
 @dataclass
 class FillerKeepInputIgnoreColorLightningConfig:
     pass
-
 
 @dataclass
 class LightningConfigBase:
@@ -144,18 +122,7 @@ class PixelEachSubstitutorLightningConfig(LightningConfigBase):
     max_epochs_for_each_task: int = 3
 
 @dataclass
-class PixelEachSubstitutorNonColorEncodingLightningConfig(LightningConfigBase):
-    max_epochs_for_each_task: int = 3
-
-@dataclass
 class PixelEachSubstitutorRepeatLightningConfig(LightningConfigBase):
-    max_queue: int = 20
-    max_depth: int = 30
-    max_AFS: int = 100 # AFS: Accuracy First Search
-    max_epochs_per_AFS: int = 100
-
-@dataclass 
-class PixelEachSubstitutorRepeatNonColorEncodingLightningConfig(LightningConfigBase):
     max_queue: int = 20
     max_depth: int = 30
     max_AFS: int = 100 # AFS: Accuracy First Search

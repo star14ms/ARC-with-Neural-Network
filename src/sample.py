@@ -5,7 +5,7 @@ from rich import print
 
 from data import ARCDataset
 from arc.model.fill.keep_input import FillerKeepInput
-from arc.model.substitute.color_encode import PixelEachSubstitutor
+from arc.model.substitute.v2_CL_encode import PixelEachSubstitutor
 from arc.constants import get_challenges_solutions_filepath
 from arc.utils.visualize import plot_task
 

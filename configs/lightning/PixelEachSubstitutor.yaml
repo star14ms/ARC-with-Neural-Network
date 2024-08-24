@@ -20,5 +20,5 @@ params:
       L_num_layers: 4,
     },
   ]
-  max_epochs_for_each_task: 3
+  max_epochs_for_each_task: 300
   train_loss_threshold_to_stop: 0.01
