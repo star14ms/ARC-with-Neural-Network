@@ -210,10 +210,10 @@ tasks_solvable_with_3x3_kernel = '''\
 25ff71a9 3618c87e 42a50994 4347f46a 50cb2852 67385a82 67a423a3 6e02f1e3 6f8cd79b a79310a0 a9f96cdd aedd82e4 b6afb2da bb43febb d511f180 54d9e175 6c434453 913fb3ed'''.split()
 
 tasks_fulid = '''\
-444801d8 f1cefba8 d4f3cd78 aba27056'''.split()
+444801d8 *f1cefba8 d4f3cd78 aba27056'''.split()
 
 tasks_sequential_simple_line = '''\
-d9f24cd1 *3bd67248 *5c0a986e *7ddcd7ec 
+d9f24cd1 3bd67248 5c0a986e *7ddcd7ec 
 '''.split()
 # *d07ae81c *e21d9049 *855e0971 *bd4472b8 *264363fd *ec883f72 *25d487eb *82819916 *6d58a25d *6e19193c *d43fd935 *1f0c79e5 *b8cdaf2b *8d510a79 *41e4d17e *623ea044 *a78176bb *ea786f4a *e40b9e2f
 
@@ -226,11 +226,11 @@ def get_filter_funcs():
     filter_funcs = (
         ARCDataClassifier.in_data_codes_f([
             # '22168020',
-            *filter_data_codes(tasks_sequential_simple_line),
-            # *filter_data_codes(tasks_fulid),
             # *filter_data_codes(tasks_fill_1),
             # *filter_data_codes(tasks_fill_2),
             # *filter_data_codes(tasks_solvable_with_3x3_kernel),
+            *filter_data_codes(tasks_sequential_simple_line),
+            # *filter_data_codes(tasks_fulid),
         ], reorder=True),
         # ARCDataClassifier.is_same_shape_f(True),
         # ARCDataClassifier.is_shape_size_in_f(start=1, stop=21),

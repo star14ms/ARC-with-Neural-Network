@@ -19,5 +19,5 @@ params:
   C_num_layers: 1
   C_n_head: null
   C_dim_feedforward: 1
-  dropout: 0.1
+  dropout: 0.0
   n_class: 10

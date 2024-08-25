@@ -18,12 +18,14 @@ params:
   ]
   train_loss_threshold_to_stop: 0.01
 
+  max_AFS: 100 # AFS: Accuracy First Search
   max_queue: 20
   max_depth: 30
-  max_AFS: 100 # AFS: Accuracy First Search
   max_epochs_per_AFS: 100
-  max_epochs_initial: 300
+  max_epochs_initial: 200
 
-  verbose: False
   n_repeat_max_acc_threshold: 30
-  prior_to_corrected_pixels: False
+  n_perfect_extension_threshold: 1
+  prior_to_corrected_pixels: True
+
+  verbose: True

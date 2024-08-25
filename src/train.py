@@ -64,7 +64,7 @@ def train(config: DictConfig, model=None, filter_funcs=None, test=False, return_
     })
 
     trainer = TrainerCustom(
-        # accelerator='cpu',
+        accelerator='cpu',
         max_epochs=max_epochs, 
         logger=logger, 
         log_every_n_steps=1, 

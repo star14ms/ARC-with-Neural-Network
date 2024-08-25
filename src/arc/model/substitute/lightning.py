@@ -179,7 +179,7 @@ class PixelEachSubstitutorBase(LightningModuleBase):
             warnings.warn(f'top_k_submission should be less than or equal to n_trials. top_k_submission is set to {n_trials}.')
 
         self.n_trials = n_trials
-        self.params_for_each_cell = ([{}] + (hyperparams_for_each_cell if hyperparams_for_each_cell else [{}])) if 'Repeat' in self.__class__.__name__ else hyperparams_for_each_cell
+        self.params_for_each_cell = ([{}] + (hyperparams_for_each_cell if hyperparams_for_each_cell else [])) if 'Repeat' in self.__class__.__name__ else hyperparams_for_each_cell
         self.max_epochs_for_each_task = max_epochs_for_each_task
         self.max_epochs_initial = max_epochs_initial
         self.train_loss_threshold_to_stop = train_loss_threshold_to_stop
@@ -375,15 +375,16 @@ class PixelEachSubstitutorBase(LightningModuleBase):
 
 
 class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
-    def __init__(self, max_AFS=200, max_queue=20, max_depth=4, max_epochs_per_AFS=100, verbose=False, n_repeat_max_acc_threshold=30, prior_to_corrected_pixels=False, *args, **kwargs):
+    def __init__(self, max_AFS=100, max_queue=20, max_depth=30, max_epochs_per_AFS=100, n_repeat_max_acc_threshold=30, n_perfect_extension_threshold=3, prior_to_corrected_pixels=False, verbose=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.max_AFS = max_AFS
         self.max_queue = max_queue
         self.max_depth = max_depth
+        self.max_epochs_per_AFS = max_epochs_per_AFS
         self.verbose = verbose
         self.n_repeat_max_acc_threshold = n_repeat_max_acc_threshold
+        self.n_perfect_extension_threshold = n_perfect_extension_threshold
         self.prior_to_corrected_pixels = prior_to_corrected_pixels
-        self.max_epochs_per_AFS = max_epochs_per_AFS
 
     def _training_step(self, batches_train, task_id, n):
 
@@ -391,7 +392,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
             nonlocal next_id
             if len(models_prev) == 0 or (idx_cell >= 1 and extend): # models_prev[0] should train continuously
                 # Create new model
-                varied_kwargs = self.params_for_each_cell[idx_cell if len(models_prev) != 0 else idx_cell+1]
+                varied_kwargs = self.params_for_each_cell[idx_cell if len(models_prev) != 0 or len(self.params_for_each_cell) == 1 else idx_cell+1]
                 model = self.model_class(*self.model_args, **{**self.model_kwargs, **varied_kwargs})
                 model.to(batches_train[0][0].device)
                 model.id = idx_cell
@@ -438,6 +439,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
         id_prog_afs = self.progress._add_task(self.max_AFS, '  AFS {}'.format(f'0/{self.max_AFS}'))
         next_id = 0
         completed = False
+        n_perfect_extension = 0
         key_sorting = lambda x: (x['is_corrected_pixels_maintained'], x['acc_max']) if self.prior_to_corrected_pixels else (x['acc_max'])
 
         for i in range(self.max_AFS): # AFS: Accuracy First Search
@@ -446,8 +448,9 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
             queue = sorted(queue, key=key_sorting, reverse=True)
             queue = queue[:self.max_queue]
             checkpoint = queue.pop(0)
-            models_prev, opt_prev, acc_prev, acc_max, extend, is_corrected_pixels_maintained = \
+            models_prev, answer_map_prev, opt_prev, acc_prev, acc_max, extend, is_corrected_pixels_maintained = \
                 checkpoint.get('models'), \
+                checkpoint.get('answer_map'), \
                 checkpoint.get('opt'), \
                 checkpoint.get('acc_prev'), \
                 checkpoint.get('acc_max'), \
@@ -459,15 +462,16 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
 
                 max_epoch = self.max_epochs_per_AFS if len(models) != 1 else self.max_epochs_initial
                 id_prog_e = self.progress._add_task(max_epoch, f'Epoch 0/{max_epoch}')
-                training_branch_generator = self._training_get_checkpoint_generaotr(models, batches_train, opt, acc_prev, acc_max, accuracy0, max_epoch, id_prog_e)
+                training_branch_generator = self._training_get_checkpoint_generaotr(models, batches_train, answer_map_prev, opt, acc_prev, acc_max, max_epoch, id_prog_e)
 
                 result = self._training_step_generate_checkpoints(models, opt, training_branch_generator, checkpoint, id_prog_acc, len(queue), idx_cell)
-                checkpoints_new, completed, acc_next, total_loss, n_sub_tasks_correct = result
+                checkpoints_new, is_extended_correctly, acc_next, total_loss, n_sub_tasks_correct = result
 
-                # if len(checkpoints_new) > 0 and all([not x['is_corrected_pixels_maintained'] for x in checkpoints_new]):
-                #     checkpoints_new = [checkpoints_new[-1]]
-                    # min_acc = min([x['acc_prev'] for x in checkpoints_new])
-                    # checkpoints_new = [x for x in checkpoints_new if x['acc_prev'] == min_acc or x['is_corrected_pixels_maintained']]
+                if is_extended_correctly:
+                    n_perfect_extension += 1
+
+                    if n_perfect_extension == self.n_perfect_extension_threshold:
+                        completed = True
 
                 self.print_and_write([model.instance_id for model in models])
                 self.print_and_write(is_corrected_pixels_maintained, round(acc_prev.item()*100, 2), '->')
@@ -503,27 +507,24 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
             checkpoint.get('is_corrected_pixels_maintained'), \
 
         checkpoints_new = []
-        completed = False
+        is_extended_correctly = False
         _acc_next = 0.0
         _total_loss = 0.0
         _n_sub_tasks_correct = 0
         self.update_task_progress(id_prog_acc, n_queue=n_queue+len(checkpoints_new), completed=acc_max*100, description=f'  Acc {acc_max*100:.1f}%' if acc_max != 1 else f'  Acc 100%')
 
-        for results, total_loss, acc_next, n_sub_tasks_correct, opt, n_epoch_trained in training_branch_generator:
+        for results, total_loss, acc_next, n_sub_tasks_correct, opt, n_epoch_trained, answer_map, is_corrected_pixels_maintained_next in training_branch_generator:
             _acc_next = acc_next
             _total_loss = total_loss
             _n_sub_tasks_correct = n_sub_tasks_correct
             self.update_task_progress(id_prog_acc, n_queue=n_queue+len(checkpoints_new), completed=acc_max*100, description=f'  Acc {acc_max*100:.1f}%' if acc_max != 1 else f'  Acc 100%')
 
-            answer_map = [result['c_decoded'] for result in results]
-            is_corrected_pixels_maintained_next = self.is_corrected_pixels_maintained(answer_map_prev, answer_map) # Prvent extension before finding the input
-          
             if is_corrected_pixels_maintained_next:
                 for j in range(len(checkpoints_new)-1, -1, -1):
                     if not checkpoints_new[j]['is_corrected_pixels_maintained']:
                         del checkpoints_new[j]
                         
-            if acc_next == 1 or (acc_next >= acc_max and ((len(models) > 2 and is_corrected_pixels_maintained) or is_corrected_pixels_maintained_next) and len(models) < self.max_depth):
+            if acc_next == 1 or (acc_next >= acc_max and ((len(models) > 2 and is_corrected_pixels_maintained) or is_corrected_pixels_maintained_next) and len(models) < self.max_depth): 
                 acc_max = max(acc_max, acc_next)
 
                 checkpoint_kwargs = {
@@ -537,7 +538,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                 }
 
                 if acc_next == 1 and (acc_prev == acc_next or len(models) == 1):
-                    completed = True
+                    is_extended_correctly = True
 
                     checkpoints_new.append({
                         'models': models,
@@ -545,13 +546,13 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                         **checkpoint_kwargs
                     })
                 else:
-                    # duplicated_performace = False
-                    # for checkpoint in checkpoints_new:
-                    #     if checkpoint['acc_prev'] == acc_next and self.is_same_performance(checkpoint['answer_map'], answer_map):
-                    #         duplicated_performace = True
-                    #         break
-                    # if duplicated_performace:
-                    #     continue
+                    duplicated_performace = False
+                    for checkpoint in checkpoints_new:
+                        if checkpoint['acc_prev'] == acc_next and self.is_same_performance(checkpoint['answer_map'], answer_map):
+                            duplicated_performace = True
+                            break
+                    if duplicated_performace:
+                        continue
 
                     models_copied, opt_copied = self.copy_model_and_opt(models, opt, idx_cell)
 
@@ -563,15 +564,13 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                         'opt': opt_copied,
                         **checkpoint_kwargs
                     })
-                    
-        return checkpoints_new, completed, _acc_next, _total_loss, _n_sub_tasks_correct
 
-    def _training_get_checkpoint_generaotr(self, models: nn.Module, batches_train, opt: torch.optim.Optimizer, acc_prev: float, acc_max: float, accuracy0: float, max_epoch: int, id_prog_e: int):
+        return checkpoints_new, is_extended_correctly, _acc_next, _total_loss, _n_sub_tasks_correct
+
+    def _training_get_checkpoint_generaotr(self, models: nn.Module, batches_train, answer_map_prev, opt: torch.optim.Optimizer, acc_prev: float, acc_max: float, max_epoch: int, id_prog_e: int):
         t_batch = [batch[1] for batch in batches_train]
         acc_max = 0
         n_repeat_max_acc = 0
-        label_input = True if acc_prev == accuracy0 and acc_max < accuracy0 else False
-        recognize_input = False
         loss_prev = 0
         n_times_constant_loss = 0
 
@@ -585,15 +584,15 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                 for depth, model in enumerate(models):
                     y = model(y, epoch=e, batch_idx=i, return_prob=False if depth == len(models)-1 else True)
 
-                    # if depth != len(models)-1:
-                    #     _, max_indices = torch.max(y, dim=1)
-                    #     y = torch.nn.functional.one_hot(max_indices, num_classes=y.size(1)).to(x.device, x.dtype).permute(0, 3, 1, 2)
+                    if depth != len(models)-1:
+                        _, max_indices = torch.max(y, dim=1)
+                        y = torch.nn.functional.one_hot(max_indices, num_classes=y.size(1)).to(x.device, x.dtype).permute(0, 3, 1, 2)
 
-                loss = self.loss_fn(y, t if not label_input else x)
-
-                opt.zero_grad()
-                loss.backward()
-                opt.step()
+                loss = self.loss_fn(y, t) # if not label_input else x
+                if e != 0:
+                    opt.zero_grad()
+                    loss.backward()
+                    opt.step()
 
                 x_decoded = torch.argmax(x, dim=1).long()
                 y_decoded = torch.argmax(y, dim=1).long()
@@ -607,12 +606,12 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
 
                 c_decoded = torch.where(y_decoded == t_decoded, 1, 0)
                 results.append({'x_decoded': x_decoded, 'y_decoded': y_decoded, 't_decoded': t_decoded, 'c_decoded': c_decoded})
-                total_loss += loss
+                total_loss += loss.sum()
                 y_batch.append(y)
 
             acc_next, n_sub_tasks_correct = self.get_avg_accuracy(zip(y_batch, t_batch), return_n_sub_tasks_correct=True)
-            n_repeat_max_acc = 0 if acc_next >= acc_max else (n_repeat_max_acc + 1)
-            self.update_task_progress(id_prog_e, e+1, loss=loss, depth=len(models), description=f'Epoch {e+1}/{max_epoch}')
+            n_repeat_max_acc = 0 if acc_next > acc_max else (n_repeat_max_acc + 1)
+            self.update_task_progress(id_prog_e, e+1, loss=loss.sum(), depth=len(models), description=f'Epoch {e+1}/{max_epoch}')
             acc_max = max(acc_max, acc_next)
 
             if loss_prev == total_loss:
@@ -621,17 +620,16 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                 n_times_constant_loss = 0
                 loss_prev = total_loss
 
-            if (len(models) != 1 and n_repeat_max_acc > self.n_repeat_max_acc_threshold) or (total_loss > 0.5 and n_times_constant_loss == 10):
+            if ((len(models) != 1 or acc_prev < acc_next) and n_repeat_max_acc > self.n_repeat_max_acc_threshold) or (total_loss > 0.5 and n_times_constant_loss == 10):
                 break
 
-            if not recognize_input and acc_prev == accuracy0 and acc_next >= accuracy0:
-                label_input = False
-                recognize_input = True
+            if acc_next == 1 or total_loss < self.train_loss_threshold_to_stop or (acc_prev < acc_next and len(models) < self.max_depth):
+                answer_map = [result['c_decoded'] for result in results]
+                is_corrected_pixels_maintained_next = self.is_corrected_pixels_maintained(answer_map_prev, answer_map) # Prvent extension before finding the input
 
-            if (acc_next == 1 and total_loss < self.train_loss_threshold_to_stop) or (acc_prev < acc_next and acc_max == acc_next and len(models) < self.max_depth):
-                yield results, total_loss, acc_next, n_sub_tasks_correct, opt, e+1
+                yield results, total_loss, acc_next, n_sub_tasks_correct, opt, e+1, answer_map, is_corrected_pixels_maintained_next
 
-                if acc_next == 1:
+                if acc_next == 1: # or (e == 0 and is_corrected_pixels_maintained_next)
                     break
 
         self.progress.progress.remove_task(id_prog_e)
@@ -704,7 +702,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
         }, outputs
 
     def copy_model_and_opt(self, models, opt, idx_cell):
-        kwargs = self.params_for_each_cell[models[-1].id] if idx_cell < len(self.params_for_each_cell) else {}
+        kwargs = self.params_for_each_cell[idx_cell if len(models) != 1 or len(self.params_for_each_cell) == 1 else idx_cell+1]
         model = self.model_class(*self.model_args, **{**self.model_kwargs, **kwargs})
         model.load_state_dict(copy.deepcopy(models[-1].state_dict()))
         model.id = models[-1].id

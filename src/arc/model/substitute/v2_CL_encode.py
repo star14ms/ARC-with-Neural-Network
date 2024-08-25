@@ -7,12 +7,12 @@ from arc.model.components.cross_attn import MultiheadCrossAttentionLayer
 
 
 class ColorLocationEncoder(nn.Module): 
-    def __init__(self, C_dims_encoded, L_dims_encoded, bias=False):
+    def __init__(self, C_dims_encoded, L_dims_encoded, dropout=0.1, bias=False):
         super().__init__()
         L_dim = L_dims_encoded[0]
 
         self.attn_V_self = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(L_dim, L_dim, 1, dropout=0.1, batch_first=True, bias=bias),
+            nn.TransformerEncoderLayer(L_dim, L_dim, 1, dropout=dropout, batch_first=True, bias=bias),
             num_layers=1,
             enable_nested_tensor=False,
         )
@@ -103,7 +103,7 @@ class ColorLocationDecoder(nn.Module):
         self.attn_C_L =  MultiheadCrossAttentionLayer(L_dim, L_dim, C_dim_feedforward,  dropout=dropout, batch_first=True, bias=bias)
         
         self.attn_C_self = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(C_dim, C_dim, C_dim_feedforward, dropout=0.1, batch_first=True, bias=bias),
+            nn.TransformerEncoderLayer(C_dim, C_dim, C_dim_feedforward, dropout=dropout, batch_first=True, bias=bias),
             num_layers=1,
             enable_nested_tensor=False,
         )
@@ -167,6 +167,7 @@ class PixelEachSubstitutor(nn.Module):
         self.encoder = ColorLocationEncoder(
             C_dims_encoded=C_dims_encoded,
             L_dims_encoded=L_dims_encoded,
+            dropout=dropout,
             bias=False,
         )
 
