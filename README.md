@@ -7,7 +7,15 @@
 - [arcprize.org](https://arcprize.org/)
 
 ## Output
+> [PixelEachSubstitutor](https://raw.githubusercontent.com/star14ms/ARC-with-Neural-Network/update-readme/output/images/PixelEachSubstitutor.3_depth.gv.png)
+
+
 ![](./output/images/PixelEachSubstitutor.png)
+
+> Accuracy First Search (with recurrsion of [PixelEachSubstitutor](https://raw.githubusercontent.com/star14ms/ARC-with-Neural-Network/update-readme/output/images/PixelEachSubstitutor.3_depth.gv.png)
+)
+
+![](./output/images/Accuracy_First_Search.gif)
 
 ## Main Libraries
 - [Pytorch](https://pytorch.org/tutorials/) (Machine Learning Framework)
