@@ -72,9 +72,11 @@ class FillerKeepInputIgnoreColorConfig:
 
 @dataclass
 class PixelEachSubstitutorConfig:
+    W_max: int = 30
+    H_max: int = 30
     n_range_search: int = 1
-    max_width: int = 3
-    max_height: int = 3
+    W_kernel_max: int = 3
+    H_kernel_max: int = 3
 
     L_encode: bool = True
     L_dims_encoded: List[int] = (9,)

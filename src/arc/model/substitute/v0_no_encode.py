@@ -18,12 +18,12 @@ class LocationEncoder(nn.Module):
                 self.ff_L.add_module(f'relu_{i}', nn.ReLU())
 
     def forward(self, x):
-        NS, C, LH, LW = x.shape
+        NS, C, L = x.shape
 
         # Encode Locations
         # x = x.view(NS*C, 1, LH, LW) # [N, C, H, W]
         # x = self.conv(x) # [N, C, H, W]
-        x = x.reshape(NS*C, LH*LW)
+        x = x.reshape(NS*C, L)
         x = self.ff_L(x).reshape(NS, C, -1) # [N*S*C, L]: 2. Location Encoding
 
         return x
@@ -66,17 +66,17 @@ class ReasonerNonColorEncoding(nn.Module):
 
 
 class PixelEachSubstitutorNonColorEncoding(nn.Module):
-    def __init__(self, n_range_search=-1, max_width=61, max_height=61, L_dims_encoded=[512, 128, 64], L_dims_decoded=[32, 8, 1], pad_class_initial=0, pad_num_layers=1, pad_n_head=None, pad_dim_feedforward=1, L_encode=False, C_encode=None, C_dims_encoded=[], L_num_layers=6, L_n_head=None, L_dim_feedforward=1, C_num_layers=1, C_n_head=None, C_dim_feedforward=1, dropout=0.1, n_class=10):
+    def __init__(self, W_max=30, H_max=30, n_range_search=-1, W_kernel_max=61, H_kernel_max=61, L_dims_encoded=[512, 128, 64], L_dims_decoded=[32, 8, 1], pad_class_initial=0, pad_num_layers=1, pad_n_head=None, pad_dim_feedforward=1, L_encode=False, L_num_layers=6, L_n_head=None, L_dim_feedforward=1, C_num_layers=1, C_n_head=None, C_dim_feedforward=1, dropout=0.1, n_class=10, C_encode=None, C_dims_encoded=[]):
         super().__init__()
-        assert n_range_search != -1 and max_width >= 1 + 2*n_range_search and max_height >= 1 + 2*n_range_search
+        assert n_range_search != -1 and W_kernel_max >= 1 + 2*n_range_search and H_kernel_max >= 1 + 2*n_range_search
         self.L_encode = L_encode
-        L_dim = max_width * max_height
-        L_dims_encoded = [L_dim] + L_dims_encoded
 
         self.abstractor = PixelVectorExtractor(
+            W_max=W_max, 
+            H_max=H_max, 
             n_range_search=n_range_search,
-            max_width=max_width,
-            max_height=max_height,
+            W_kernel_max=W_kernel_max,
+            H_kernel_max=H_kernel_max,
             pad_n_head=pad_n_head,
             pad_dim_feedforward=pad_dim_feedforward, 
             dropout=dropout,

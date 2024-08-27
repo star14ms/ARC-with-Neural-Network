@@ -5,14 +5,14 @@ params:
   hyperparams_for_each_cell: [
     # {
     #   n_range_search: 0,
-    #   max_width: 1,
-    #   max_height: 1,
+    #   W_kernel_max: 1,
+    #   H_kernel_max: 1,
     #   L_dims_encoded: [1],
     # },
     # {
     #   n_range_search: 1,
-    #   max_width: 3,
-    #   max_height: 3,
+    #   W_kernel_max: 3,
+    #   H_kernel_max: 3,
     #   L_dims_encoded: [9],
     # },
   ]

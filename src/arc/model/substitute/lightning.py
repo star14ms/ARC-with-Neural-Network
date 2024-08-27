@@ -556,14 +556,14 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
 
                     models_copied, opt_copied = self.copy_model_and_opt(models, opt, idx_cell)
 
-                    if self.verbose:
-                        self._print_one_step_result(results, answer_map_prev, len(models), [model.instance_id for model in models], is_corrected_pixels_maintained_next, acc_prev, acc_next, acc_max, n_epoch_trained, end='\n' + '-'*100 + '\n')
-
                     checkpoints_new.append({
                         'models': models_copied,
                         'opt': opt_copied,
                         **checkpoint_kwargs
                     })
+
+                if self.verbose:
+                    self._print_one_step_result(results, answer_map_prev, len(models), [model.instance_id for model in models], is_corrected_pixels_maintained_next, acc_prev, acc_next, acc_max, n_epoch_trained, end='\n' + '-'*100 + '\n')
 
         return checkpoints_new, is_extended_correctly, _acc_next, _total_loss, _n_sub_tasks_correct
 

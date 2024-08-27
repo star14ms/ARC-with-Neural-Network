@@ -127,22 +127,18 @@ class ColorLocationDecoder(nn.Module):
 
 
 class PixelEachSubstitutor(nn.Module):
-    def __init__(self, n_range_search=-1, max_width=61, max_height=61, C_dims_encoded=[2], L_dims_encoded=[9], L_dims_decoded=[1], pad_class_initial=0, pad_num_layers=1, pad_n_head=None, pad_dim_feedforward=1, L_num_layers=6, L_n_head=None, L_dim_feedforward=1, C_num_layers=1, C_n_head=None, C_dim_feedforward=1, dropout=0.1, n_class=10, C_encode=None, L_encode=None):
+    def __init__(self, W_max=30, H_max=30, n_range_search=-1, W_kernel_max=61, H_kernel_max=61, C_dims_encoded=[2], L_dims_encoded=[9], L_dims_decoded=[1], pad_class_initial=0, L_num_layers=6, L_n_head=None, L_dim_feedforward=1, C_num_layers=1, C_n_head=None, C_dim_feedforward=1, dropout=0.1, n_class=10, C_encode=None, L_encode=None):
         super().__init__()
-        assert n_range_search != -1 and max_width >= 1 + 2*n_range_search and max_height >= 1 + 2*n_range_search
-        L_dim = max_width * max_height
-        C_dims_encoded = [n_class] + C_dims_encoded
-        L_dims_encoded = [L_dim] + L_dims_encoded
-        L_dims_decoded =  [L_dim] + L_dims_decoded
+        assert n_range_search != -1 and W_kernel_max >= 1 + 2*n_range_search and H_kernel_max >= 1 + 2*n_range_search
+        L_dim = W_kernel_max * H_kernel_max
 
         self.abstractor = PixelVectorExtractor(
+            W_max=W_max, 
+            H_max=H_max, 
             n_range_search=n_range_search,
-            max_width=max_width,
-            max_height=max_height,
-            pad_n_head=pad_n_head,
-            pad_dim_feedforward=pad_dim_feedforward, 
+            W_kernel_max=W_kernel_max,
+            H_kernel_max=H_kernel_max,
             dropout=dropout,
-            pad_num_layers=pad_num_layers,
             bias=False,
             pad_class_initial=pad_class_initial,
             n_class=n_class,

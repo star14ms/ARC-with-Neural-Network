@@ -3,12 +3,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class PixelVectorExtractor(nn.Module):
-    def __init__(self, n_range_search, max_width, max_height, pad_class_initial=0, pad_n_head=None, pad_dim_feedforward=1, dropout=0.1, pad_num_layers=1, bias=False, n_class=10):
+class PixelRelativeVectorExtractor(nn.Module):
+    def __init__(self, n_range_search, W_kernel_max, H_kernel_max, pad_class_initial=0, pad_n_head=None, pad_dim_feedforward=1, dropout=0.1, pad_num_layers=1, bias=False, n_class=10):
         super().__init__()
         self.n_range_search = n_range_search
-        self.max_width = max_width
-        self.max_height = max_height
+        self.W_kernel_max = W_kernel_max
+        self.H_kernel_max = H_kernel_max
         self.pad_class_initial = pad_class_initial
 
         # self.attn_C = nn.TransformerEncoder(
@@ -45,7 +45,7 @@ class PixelVectorExtractor(nn.Module):
         x = x.view(N*H*W*C, HL, WL) # [N, S, C, L] where S = H*W
 
         # Padding to Max Length
-        x_max = torch.full([N*H*W*C, self.max_height, self.max_width], fill_value=0, dtype=x.dtype, device=x.device)
+        x_max = torch.full([N*H*W*C, self.H_kernel_max, self.W_kernel_max], fill_value=0, dtype=x.dtype, device=x.device)
         x_max[:,:HL,:WL] = x
         x = x_max.view(N*H*W, C, -1)
 
@@ -68,4 +68,40 @@ class PixelVectorExtractor(nn.Module):
         ### TODO: PixelVector = Pixels Located Relatively + Pixels Located Absolutely (363442ee, 63613498, aabf363d) + 3 Pixels with point-symmetric and line-symmetric relationships (3631a71a, 68b16354)
         ### TODO: PixelEachSubstitutorOverTime (045e512c, 22168020, 22eb0ac0, 3bd67248, 508bd3b6, 623ea044), 
 
-        return x.view(N*H*W, C, self.max_height, self.max_width)
+        return x.view(N*H*W, C, self.H_kernel_max*self.W_kernel_max)
+
+
+class PixelAbsoluteVectorExtractor(nn.Module):
+    def __init__(self, W_max=30, H_max=30):
+        super().__init__()
+        self.W_max = W_max
+        self.H_max = H_max
+
+    def forward(self, x, output_shape):
+        N, C, H, W = x.shape
+        H_OUT, W_OUT = output_shape
+        H_MAX, W_MAX = self.H_max, self.W_max
+
+        x_max = torch.full([N, C, H_MAX, W_MAX], fill_value=0, dtype=x.dtype, device=x.device)
+        x_max[:,:,:H,:W] = x
+        x_broadcasted = x_max.repeat(H_OUT, W_OUT, 1, 1, 1, 1)
+        
+        return x_broadcasted.permute(2, 0, 1, 3, 4, 5).reshape(N, H_OUT, W_OUT, C, H_MAX, W_MAX).reshape(N*H_OUT*W_OUT, C, H_MAX*W_MAX)
+
+
+class PixelVectorExtractor(nn.Module):
+    def __init__(self, n_range_search, W_kernel_max, H_kernel_max, W_max=30, H_max=30, pad_class_initial=0, pad_n_head=None, pad_dim_feedforward=1, dropout=0.1, pad_num_layers=1, bias=False, n_class=10):
+        super().__init__()
+        self.extract_rel_vec = PixelRelativeVectorExtractor(n_range_search, W_kernel_max, H_kernel_max, pad_class_initial, pad_n_head=pad_n_head, pad_dim_feedforward=pad_dim_feedforward, dropout=dropout, pad_num_layers=pad_num_layers, bias=bias, n_class=n_class)
+        self.extract_abs_vec = PixelAbsoluteVectorExtractor(W_max=W_max, H_max=H_max)
+
+    def forward(self, x, output_shape=None):
+        if output_shape is None:
+            output_shape = x.shape[2:]
+
+        x_rel = self.extract_rel_vec(x) # (29 + 1 + 29)**2 = 2704
+        x_abs = self.extract_abs_vec(x, output_shape) # 30**2 = 900
+
+        x = torch.cat([x_rel, x_abs], dim=2)
+
+        return x
