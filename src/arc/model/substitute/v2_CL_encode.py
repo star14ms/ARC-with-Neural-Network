@@ -6,12 +6,11 @@ from arc.model.components.pixel_vector_extractor import PixelVectorExtractor
 from arc.model.components.cross_attn import MultiheadCrossAttentionLayer
 
 
-class ColorLocationEncoder(nn.Module): 
-    def __init__(self, C_dims_encoded, L_dims_encoded, dropout=0.1, bias=False):
+class ColorEncoder(nn.Module): 
+    def __init__(self, C_dims_encoded, L_dim, dropout=0.1, bias=False):
         super().__init__()
-        L_dim = L_dims_encoded[0]
 
-        self.attn_V_self = nn.TransformerEncoder(
+        self.attn_L_self = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(L_dim, L_dim, 1, dropout=dropout, batch_first=True, bias=bias),
             num_layers=1,
             enable_nested_tensor=False,
@@ -22,12 +21,6 @@ class ColorLocationEncoder(nn.Module):
             self.ff_C.add_module(f'linear_{i}', nn.Linear(C_dims_encoded[i], C_dims_encoded[i+1], bias=bias))
             if i != len(C_dims_encoded)-2:
                 self.ff_C.add_module(f'relu_{i}', nn.ReLU())
-
-        self.ff_L = nn.Sequential()
-        for i in range(len(L_dims_encoded)-1):
-            self.ff_L.add_module(f'linear_{i}', nn.Linear(L_dims_encoded[i], L_dims_encoded[i+1], bias=bias))
-            if i != len(L_dims_encoded)-2:
-                self.ff_L.add_module(f'relu_{i}', nn.ReLU())
 
     def forward(self, x):
         NS, C, LH, LW = x.shape
@@ -43,15 +36,66 @@ class ColorLocationEncoder(nn.Module):
 
         # 1. Encode Colors depending on Location
         x = x.view(NS, C, LH*LW)
-        x_VC = self.attn_V_self(x) # [C, L] < [C, L] # (🟧 -> 🟦)
+        x_VC = self.attn_L_self(x) # [C, L] < [C, L] # (🟧 -> 🟦)
         x_VC = self.ff_C(x_VC.transpose(1, 2)).transpose(1, 2) # [L, C] -> [L, VC]
         x = F.softmax(x_VC, dim=1) # [VCp, L]
-        VC = x.shape[1]
+
+        return x, x_VC
+    
+    
+class LocationEncoder(nn.Module): 
+    def __init__(self, L_dims_encoded, bias=False):
+        super().__init__()
+
+        self.ff_L = nn.Sequential()
+        for i in range(len(L_dims_encoded)-1):
+            self.ff_L.add_module(f'linear_{i}', nn.Linear(L_dims_encoded[i], L_dims_encoded[i+1], bias=bias))
+            if i != len(L_dims_encoded)-2:
+                self.ff_L.add_module(f'relu_{i}', nn.ReLU())
+
+    def forward(self, x):
+        NS, VC, L = x.shape
+
+        # In     Out
+        # 🔳🔳🔳  🟦🟦🟦
+        # 🔳🔳🟩  🟦🟦🟨
+        # 🔳🟩🟩  🟦🟨🟨
+
+        # 🔳🔳🔳  🟦🟦🟦 
+        # 🔳🔳🟧  🟦🟦🟦 
+        # 🔳🟩🟩  🟦🟨🟨 
 
         # 2. Encode Locations
         x = x.view(NS*VC, -1)
         x_VC_VL = self.ff_L(x) # [N*S*C, L]
         x_VC_VL = x_VC_VL.reshape(NS, VC, -1)
+
+        return x_VC_VL
+
+
+class Encoder(nn.Module): 
+    def __init__(self, C_dims_encoded, L_dims_encoded, dropout=0.1, bias=False):
+        super().__init__()
+        L_dim = L_dims_encoded[0]
+
+        self.encoder_color = ColorEncoder(C_dims_encoded, L_dim, dropout=dropout, bias=bias)
+        self.encoder_location = LocationEncoder(L_dims_encoded, bias=bias)
+
+    def forward(self, x):
+        NS, C, LH, LW = x.shape
+
+        # In     Out
+        # 🔳🔳🔳  🟦🟦🟦
+        # 🔳🔳🟩  🟦🟦🟨
+        # 🔳🟩🟩  🟦🟨🟨
+
+        # 🔳🔳🔳  🟦🟦🟦 
+        # 🔳🔳🟧  🟦🟦🟦 
+        # 🔳🟩🟩  🟦🟨🟨 
+        # [C, L] -> [VC, L]
+
+        x, x_VC = self.encoder_color(x)
+        x_VC_VL = self.encoder_location(x)
 
         return x_VC_VL, x_VC
 
@@ -83,22 +127,38 @@ class Reasoner(nn.Module):
         # 🟦🟦🟦  🟦🟦🟦
         # 🟦🟨🟨  🟦🟨🟨
 
-        # 2. Attention Across Location and Color
+        # 3. Attention Across Location and Color
         mem = self.attn_VL_self(mem) # [VC, VL] < [VC, VL]
         mem = self.attn_VC_self(mem.transpose(1, 2)).transpose(1, 2)  # [VL, VC] < [VL, VC]
 
-        # 3. Determine Encoded Output Class
+        # 4. Determine Encoded Output Class
         mem = F.softmax(mem, dim=1) # [VCp, VL]
 
         return mem
 
 
-class ColorLocationDecoder(nn.Module):
-    def __init__(self, VL_dim, VC_dim, L_dim, C_dim, L_dims_decoded, L_dim_feedforward=1, C_dim_feedforward=1, dropout=0.1, bias=False):
+class LocationDecoder(nn.Module):
+    def __init__(self, VC_dim, L_dim_feedforward=1, dropout=0.1, bias=False):
         super().__init__()
 
         self.attn_VL_VL =  MultiheadCrossAttentionLayer(VC_dim, VC_dim, L_dim_feedforward, dropout=dropout, batch_first=True, bias=bias)
         self.attn_L_VL =  MultiheadCrossAttentionLayer(VC_dim, VC_dim, L_dim_feedforward, dropout=dropout, batch_first=True, bias=bias)
+        
+    def forward(self, x, mem, x_VC_VL, x_VC):
+        NS, C, HL, WL = x.shape
+
+        # 5. Decode Location
+        x_VC_VL = self.attn_L_VL(x_VC_VL.transpose(1, 2), mem.transpose(1, 2)) # [VL, VC] < [VL, VC]
+        x_VC_mem = self.attn_VL_VL(x_VC.transpose(1, 2), x_VC_VL).transpose(1, 2) # [L, VC]
+        x_VC_mem = F.softmax(x_VC_mem, dim=1) # [VC, L]
+
+        return x_VC_mem
+
+    
+class ColorDecoder(nn.Module):
+    def __init__(self, L_dim, C_dim, L_dims_decoded, L_dim_feedforward=1, C_dim_feedforward=1, dropout=0.1, bias=False):
+        super().__init__()
+
         self.attn_VC_L =  MultiheadCrossAttentionLayer(L_dim, L_dim, L_dim_feedforward, dropout=dropout, batch_first=True, bias=bias)
         self.attn_C_L =  MultiheadCrossAttentionLayer(L_dim, L_dim, C_dim_feedforward,  dropout=dropout, batch_first=True, bias=bias)
         
@@ -114,6 +174,26 @@ class ColorLocationDecoder(nn.Module):
             if i != len(L_dims_decoded)-2:
                 self.ff_L.add_module(f'relu_{i}', nn.ReLU())
 
+    def forward(self, x, x_VC, x_VC_mem):
+        NS, C, HL, WL = x.shape
+
+        # 6. Decode Color
+        x = x.view(NS, C, HL*WL)
+        x_VC_mem = self.attn_VC_L(x_VC, x_VC_mem) # [VC, L] < [VC, L]
+        y = self.attn_C_L(x, x_VC_mem) # [C, L] < [VC, L] # (🟦 -> 🟧)
+        y = self.attn_C_self(y.transpose(1, 2)).transpose(1, 2) # [L, C] -> [L, C] # Detect Emerging Color
+        y = self.ff_L(y) # [C, L] -> [C, 1]
+
+        return y
+
+
+class Decoder(nn.Module):
+    def __init__(self, VL_dim, VC_dim, L_dim, C_dim, L_dims_decoded, L_dim_feedforward=1, C_dim_feedforward=1, dropout=0.1, bias=False):
+        super().__init__()
+
+        self.decoder_location = LocationDecoder(VC_dim, L_dim_feedforward=L_dim_feedforward, dropout=dropout, bias=bias)
+        self.decoder_color = ColorDecoder(L_dim, C_dim, L_dims_decoded, L_dim_feedforward=L_dim_feedforward, C_dim_feedforward=C_dim_feedforward, dropout=dropout, bias=bias)
+
     def forward(self, x, mem, x_VC_VL, x_VC):
         NS, C, HL, WL = x.shape
 
@@ -127,17 +207,8 @@ class ColorLocationDecoder(nn.Module):
         # 🟦🟨🟨  🔳🟩🟩 
         # [VC, L] -> [C, L]
 
-        # 4. Decode Location
-        x_VC_VL = self.attn_L_VL(x_VC_VL.transpose(1, 2), mem.transpose(1, 2)) # [VL, VC] < [VL, VC]
-        x_VC_mem = self.attn_VL_VL(x_VC.transpose(1, 2), x_VC_VL).transpose(1, 2) # [L, VC]
-        x_VC_mem = F.softmax(x_VC_mem, dim=1) # [VC, L]
-
-        # 5. Decode Color
-        x = x.view(NS, C, HL*WL)
-        x_VC_mem = self.attn_VC_L(x_VC, x_VC_mem) # [VC, L] < [VC, L]
-        y = self.attn_C_L(x, x_VC_mem) # [C, L] < [VC, L] # (🟦 -> 🟧)
-        y = self.attn_C_self(y.transpose(1, 2)).transpose(1, 2) # [L, C] -> [L, C] # Detect Emerging Color
-        y = self.ff_L(y) # [C, L] -> [C, 1]
+        x_VC_mem = self.decoder_location(x, mem, x_VC_VL, x_VC)
+        y = self.decoder_color(x, x_VC, x_VC_mem)
 
         return y
 
@@ -164,7 +235,7 @@ class PixelEachSubstitutor(nn.Module):
             n_class=n_class,
         )
 
-        self.encoder = ColorLocationEncoder(
+        self.encoder = Encoder(
             C_dims_encoded=C_dims_encoded,
             L_dims_encoded=L_dims_encoded,
             dropout=dropout,
@@ -184,7 +255,7 @@ class PixelEachSubstitutor(nn.Module):
             bias=False,
         )
         
-        self.decoder = ColorLocationDecoder(
+        self.decoder = Decoder(
             VL_dim=L_dims_encoded[-1],
             VC_dim=C_dims_encoded[-1],
             L_dim=L_dim,
