@@ -46,11 +46,11 @@ class RichProgressBarCustom(RichProgressBar):
         if max_epochs != 1:
             self.train_progress_bar0_id = self.progress.add_task(description=f'Epoch 1', total=max_epochs)
 
-    def _update(self, progress_bar_id: Optional["TaskID"], current: float, completed: float | None = None, visible: bool = True, description: str | None = None) -> None:
+    def _update(self, progress_bar_id: Optional["TaskID"], current: float, completed: float | None = None, visible: bool = True, description: str | None = None, total: float | None = None) -> None:
         if self.progress is not None and self.is_enabled:
             assert progress_bar_id is not None
             task = filter(lambda task: task.id == progress_bar_id, self.progress.tasks).__next__()
-            total = task.total
+            total = total or task.total
             assert total is not None
             if current is not None and not self._should_update(current, total):
                 return
@@ -61,9 +61,9 @@ class RichProgressBarCustom(RichProgressBar):
             if completed is None:
                 leftover = current % self.refresh_rate
                 advance = leftover if (current == total and leftover != 0) else self.refresh_rate
-                self.progress.update(progress_bar_id, advance=advance, visible=visible, description=description)
+                self.progress.update(progress_bar_id, advance=advance, visible=visible, description=description, total=total)
             else:
-                self.progress.update(progress_bar_id, completed=completed, visible=visible, description=description)
+                self.progress.update(progress_bar_id, completed=completed, visible=visible, description=description, total=total)
 
             self.refresh()
 
