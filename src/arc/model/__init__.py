@@ -72,15 +72,21 @@ class FillerKeepInputIgnoreColorConfig:
 
 @dataclass
 class PixelEachSubstitutorConfig:
-    W_max: int = 30
-    H_max: int = 30
     n_range_search: int = 1
     W_kernel_max: int = 3
     H_kernel_max: int = 3
 
+    vec_abs: bool = True
+    W_max: int = 30
+    H_max: int = 30
+
+    C_encode: bool = True
+    C_dims_encoded: List[int] = (10, 2)
+    emerge_color: bool = True
+
     L_encode: bool = True
-    L_dims_encoded: List[int] = (9,)
-    L_dims_decoded: List[int] = (1,)
+    L_dims_encoded: List[int] = (9, 9,)
+    L_dims_decoded: List[int] = (9, 1,)
 
     pad_class_initial: int = 0
     pad_n_head: int | None = None
@@ -99,9 +105,7 @@ class PixelEachSubstitutorConfig:
 
 @dataclass
 class PixelEachSubstitutorRepeatConfig(PixelEachSubstitutorConfig):
-    max_AFS: int = 30
-    max_queue: int = 20
-    max_depth: int = 4
+    pass
 
 ################################################################################################################################################################################################################################################################
 
@@ -125,9 +129,11 @@ class PixelEachSubstitutorLightningConfig(LightningConfigBase):
 
 @dataclass
 class PixelEachSubstitutorRepeatLightningConfig(LightningConfigBase):
+    max_AFS: int = 100 # AFS: Accuracy First Search
     max_queue: int = 20
     max_depth: int = 30
-    max_AFS: int = 100 # AFS: Accuracy First Search
     max_epochs_per_AFS: int = 100
+    max_epochs_initial: int = 200
+    epochs_after_best: int = 100
 
 ################################################################################################################################################################################################################################################################

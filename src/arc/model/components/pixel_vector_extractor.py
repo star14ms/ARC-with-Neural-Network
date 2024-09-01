@@ -90,18 +90,22 @@ class PixelAbsoluteVectorExtractor(nn.Module):
 
 
 class PixelVectorExtractor(nn.Module):
-    def __init__(self, n_range_search, W_kernel_max, H_kernel_max, W_max=30, H_max=30, pad_class_initial=0, pad_n_head=None, pad_dim_feedforward=1, dropout=0.1, pad_num_layers=1, bias=False, n_class=10):
+    def __init__(self, n_range_search, W_kernel_max, H_kernel_max, vec_abs=True, W_max=30, H_max=30, pad_class_initial=0, pad_n_head=None, pad_dim_feedforward=1, dropout=0.1, pad_num_layers=1, bias=False, n_class=10):
         super().__init__()
+        self.vec_abs = vec_abs
         self.extract_rel_vec = PixelRelativeVectorExtractor(n_range_search, W_kernel_max, H_kernel_max, pad_class_initial, pad_n_head=pad_n_head, pad_dim_feedforward=pad_dim_feedforward, dropout=dropout, pad_num_layers=pad_num_layers, bias=bias, n_class=n_class)
-        self.extract_abs_vec = PixelAbsoluteVectorExtractor(W_max=W_max, H_max=H_max)
+
+        if vec_abs:
+            self.extract_abs_vec = PixelAbsoluteVectorExtractor(W_max=W_max, H_max=H_max)
 
     def forward(self, x, output_shape=None):
         if output_shape is None:
             output_shape = x.shape[2:]
 
-        x_rel = self.extract_rel_vec(x) # (29 + 1 + 29)**2 = 2704
-        x_abs = self.extract_abs_vec(x, output_shape) # 30**2 = 900
+        x_vec = self.extract_rel_vec(x) # (29 + 1 + 29)**2 = 2704
 
-        x = torch.cat([x_rel, x_abs], dim=2)
+        if self.vec_abs:
+            x_abs = self.extract_abs_vec(x, output_shape) # 30**2 = 900
+            x_vec = torch.cat([x_vec, x_abs], dim=2)
 
-        return x
+        return x_vec
