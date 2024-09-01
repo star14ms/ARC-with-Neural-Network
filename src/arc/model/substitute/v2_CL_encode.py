@@ -44,8 +44,21 @@ class ColorEncoder(nn.Module):
     
     
 class LocationEncoder(nn.Module): 
-    def __init__(self, L_dims_encoded, bias=False):
+    def __init__(self, VC_dim, L_dims_encoded, C_dim_feedforward, dropout=0.1, bias=False):
         super().__init__()
+        L_dim = L_dims_encoded[0]
+        
+        self.attn_V_self = nn.TransformerEncoder(
+            nn.TransformerEncoderLayer(L_dim, L_dim, C_dim_feedforward, dropout=dropout, batch_first=True, bias=bias),
+            num_layers=1,
+            enable_nested_tensor=False,
+        )
+
+        self.attn_C_self = nn.TransformerEncoder(
+            nn.TransformerEncoderLayer(VC_dim, VC_dim, C_dim_feedforward, dropout=dropout, batch_first=True, bias=bias),
+            num_layers=1,
+            enable_nested_tensor=False,
+        )
 
         self.ff_L = nn.Sequential()
         for i in range(len(L_dims_encoded)-1):
@@ -66,9 +79,9 @@ class LocationEncoder(nn.Module):
         # 🔳🟩🟩  🟦🟨🟨 
 
         # 2. Encode Locations
-        x = x.view(NS*VC, -1)
         x = self.attn_V_self(x) # [L, VC] < [L, VC]
         x = self.attn_C_self(x.transpose(1, 2)).transpose(1, 2) # [L, VC] < [L, VC]
+        x = x.reshape(NS*VC, L)
         x_VC_VL = self.ff_L(x) # [N*S*C, L]
         x_VC_VL = x_VC_VL.reshape(NS, VC, -1)
 
@@ -79,9 +92,10 @@ class Encoder(nn.Module):
     def __init__(self, C_dims_encoded, L_dims_encoded, L_dim_feedforward, C_dim_feedforward, dropout=0.1, bias=False):
         super().__init__()
         L_dim = L_dims_encoded[0]
+        VC_dim = C_dims_encoded[-1]
 
-        self.encoder_location = LocationEncoder(L_dims_encoded, bias=bias)
         self.encoder_color = ColorEncoder(C_dims_encoded, L_dim, L_dim_feedforward, dropout=dropout, bias=bias)
+        self.encoder_location = LocationEncoder(VC_dim, L_dims_encoded, C_dim_feedforward, dropout=dropout, bias=bias)
 
     def forward(self, x):
         NS, C, L = x.shape
@@ -158,17 +172,20 @@ class LocationDecoder(nn.Module):
 
 
 class ColorDecoder(nn.Module):
-    def __init__(self, L_dim, C_dim, L_dims_decoded, L_dim_feedforward=1, C_dim_feedforward=1, dropout=0.1, bias=False):
+    def __init__(self, L_dim, C_dim, L_dims_decoded, emerge_color=True, L_dim_feedforward=1, C_dim_feedforward=1, dropout=0.1, bias=False):
         super().__init__()
 
         self.attn_VC_L =  MultiheadCrossAttentionLayer(L_dim, L_dim, L_dim_feedforward, dropout=dropout, batch_first=True, bias=bias)
-        self.attn_C_L =  MultiheadCrossAttentionLayer(L_dim, L_dim, C_dim_feedforward,  dropout=dropout, batch_first=True, bias=bias)
-        
-        # self.attn_C_self = nn.TransformerEncoder(
-        #     nn.TransformerEncoderLayer(C_dim, C_dim, C_dim_feedforward, dropout=dropout, batch_first=True, bias=bias),
-        #     num_layers=1,
-        #     enable_nested_tensor=False,
-        # )
+        self.attn_C_L =  MultiheadCrossAttentionLayer(L_dim, L_dim, L_dim_feedforward,  dropout=dropout, batch_first=True, bias=bias)
+
+        self.emerge_color = emerge_color
+
+        if emerge_color:
+            self.attn_C_self = nn.TransformerEncoder(
+                nn.TransformerEncoderLayer(C_dim, C_dim, C_dim_feedforward, dropout=dropout, batch_first=True, bias=bias),
+                num_layers=1,
+                enable_nested_tensor=False,
+            )
 
         self.ff_L = nn.Sequential()
         for i in range(len(L_dims_decoded)-1):
@@ -183,18 +200,21 @@ class ColorDecoder(nn.Module):
         x = x.view(NS, C, L)
         x_VC_mem = self.attn_VC_L(x_VC, x_VC_mem) # [VC, L] < [VC, L]
         y = self.attn_C_L(x, x_VC_mem) # [C, L] < [VC, L] # (🟦 -> 🟧)
-        # y = self.attn_C_self(y.transpose(1, 2)).transpose(1, 2) # [L, C] -> [L, C] # Detect Emerging Color
+
+        if self.emerge_color:
+            y = self.attn_C_self(y.transpose(1, 2)).transpose(1, 2) # [L, C] -> [L, C] # Detect Emerging Color
+
         y = self.ff_L(y) # [C, L] -> [C, 1]
 
         return y
 
 
 class Decoder(nn.Module):
-    def __init__(self, VL_dim, VC_dim, L_dim, C_dim, L_dims_decoded, L_dim_feedforward=1, C_dim_feedforward=1, dropout=0.1, bias=False):
+    def __init__(self, VL_dim, VC_dim, L_dim, C_dim, L_dims_decoded, emerge_color=True, L_dim_feedforward=1, C_dim_feedforward=1, dropout=0.1, bias=False):
         super().__init__()
 
         self.decoder_location = LocationDecoder(VC_dim, L_dim_feedforward=L_dim_feedforward, dropout=dropout, bias=bias)
-        self.decoder_color = ColorDecoder(L_dim, C_dim, L_dims_decoded, L_dim_feedforward=L_dim_feedforward, C_dim_feedforward=C_dim_feedforward, dropout=dropout, bias=bias)
+        self.decoder_color = ColorDecoder(L_dim, C_dim, L_dims_decoded, emerge_color=emerge_color, L_dim_feedforward=L_dim_feedforward, C_dim_feedforward=C_dim_feedforward, dropout=dropout, bias=bias)
 
     def forward(self, x, mem, x_VC_VL, x_VC):
         NS, C, L = x.shape
@@ -216,7 +236,7 @@ class Decoder(nn.Module):
 
 
 class PixelEachSubstitutor(nn.Module):
-    def __init__(self, n_range_search=-1, W_max=30, H_max=30, W_kernel_max=61, H_kernel_max=61, C_dims_encoded=[2], L_dims_encoded=[9], L_dims_decoded=[1], pad_class_initial=0, L_num_layers=6, L_n_head=None, L_dim_feedforward=1, C_num_layers=1, C_n_head=None, C_dim_feedforward=1, dropout=0.1, n_class=10, C_encode=None, L_encode=None, pad_num_layers=None, pad_n_head=None, pad_dim_feedforward=None):
+    def __init__(self, n_range_search=-1, vec_abs=True, emerge_color=True, W_max=30, H_max=30, W_kernel_max=61, H_kernel_max=61, C_dims_encoded=[2], L_dims_encoded=[9], L_dims_decoded=[1], pad_class_initial=0, L_num_layers=6, L_n_head=None, L_dim_feedforward=1, C_num_layers=1, C_n_head=None, C_dim_feedforward=1, dropout=0.1, n_class=10, C_encode=None, L_encode=None, pad_num_layers=None, pad_n_head=None, pad_dim_feedforward=None):
         super().__init__()
         assert n_range_search != -1 and W_kernel_max >= 1 + 2*n_range_search and H_kernel_max >= 1 + 2*n_range_search
 
@@ -258,6 +278,7 @@ class PixelEachSubstitutor(nn.Module):
             L_dim=L_dims_encoded[0],
             C_dim=n_class,
             L_dims_decoded=L_dims_decoded,
+            emerge_color=emerge_color,
             L_dim_feedforward=L_dim_feedforward,
             C_dim_feedforward=C_dim_feedforward,
             dropout=dropout,

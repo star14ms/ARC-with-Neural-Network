@@ -72,15 +72,21 @@ class FillerKeepInputIgnoreColorConfig:
 
 @dataclass
 class PixelEachSubstitutorConfig:
-    W_max: int = 30
-    H_max: int = 30
     n_range_search: int = 1
     W_kernel_max: int = 3
     H_kernel_max: int = 3
 
+    vec_abs: bool = True
+    W_max: int = 30
+    H_max: int = 30
+
+    C_encode: bool = True
+    C_dims_encoded: List[int] = (10, 2)
+    emerge_color: bool = True
+
     L_encode: bool = True
-    L_dims_encoded: List[int] = (9,)
-    L_dims_decoded: List[int] = (1,)
+    L_dims_encoded: List[int] = (9, 9,)
+    L_dims_decoded: List[int] = (9, 1,)
 
     pad_class_initial: int = 0
     pad_n_head: int | None = None

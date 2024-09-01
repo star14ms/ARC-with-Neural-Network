@@ -387,17 +387,20 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
         self.n_repeat_max_acc_threshold = n_repeat_max_acc_threshold
         self.n_perfect_extension_threshold = n_perfect_extension_threshold
         self.prior_to_corrected_pixels = prior_to_corrected_pixels
+        self.emerge_color = True
 
         self.verbose = verbose
 
     def _training_step(self, batches_train, task_id, n):
+        if self.model_kwargs.get('emerge_color') is False:
+            self.emerge_color = self.check_output_has_emerged_color(batches_train)
 
         def __build_models():
             nonlocal next_id
             if len(models_prev) == 0 or (idx_cell >= 1 and extend): # models_prev[0] should train continuously
                 # Create new model
                 varied_kwargs = self.params_for_each_cell[idx_cell if len(models_prev) != 0 or len(self.params_for_each_cell) == 1 else idx_cell+1]
-                model = self.model_class(*self.model_args, **{**self.model_kwargs, **varied_kwargs})
+                model = self.model_class(*self.model_args, **{**self.model_kwargs, **varied_kwargs, 'emerge_color': self.emerge_color})
                 model.to(batches_train[0][0].device)
                 model.id = idx_cell
                 model.instance_id = (next_id := next_id + 1)
@@ -710,7 +713,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
 
     def copy_model_and_opt(self, models, opt, idx_cell):
         kwargs = self.params_for_each_cell[idx_cell if len(models) != 1 or len(self.params_for_each_cell) == 1 else idx_cell+1]
-        model = self.model_class(*self.model_args, **{**self.model_kwargs, **kwargs})
+        model = self.model_class(*self.model_args, **{**self.model_kwargs, **kwargs, 'emerge_color': self.emerge_color})
         model.load_state_dict(copy.deepcopy(models[-1].state_dict()))
         model.id = models[-1].id
         model.instance_id = models[-1].instance_id
@@ -788,6 +791,14 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
         #     ['{}'.format((round(acc.item()*100, 1), [model.instance_id for model in _models])) \
         #     for _models, _, _, _, acc, _, _ in queue]
         # ))
+        
+    @staticmethod
+    def check_output_has_emerged_color(batches_train):
+        for x_batch, t_batch in batches_train:
+            for x, t in zip(x_batch, t_batch):
+                if torch.any(torch.where(t.sum(dim=(1, 2)) != 0, 1, 0) - torch.where(x.sum(dim=(1, 2)) != 0, 1, 0)) == 1:
+                    return True
+        return False
 
 
 class PixelEachSubstitutorL(PixelEachSubstitutorBase):
