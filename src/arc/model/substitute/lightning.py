@@ -469,12 +469,15 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                 training_branch_generator = self._training_get_checkpoint_generaotr(models, batches_train, answer_map_prev, opt, acc_prev, acc_max, max_epoch, id_prog_e)
 
                 result = self._training_step_generate_checkpoints(models, opt, training_branch_generator, checkpoint, id_prog_acc, len(queue), idx_cell)
-                checkpoints_new, is_extended_correctly, acc_next, total_loss, n_sub_tasks_correct = result
+                checkpoints_new, is_extended_correctly, acc_next, total_loss, n_sub_tasks_correct, got_perfect_simultaneously = result
 
                 if is_extended_correctly:
                     n_perfect_extension += 1
 
-                    if n_perfect_extension == self.n_perfect_extension_threshold:
+                    if got_perfect_simultaneously:
+                        n_perfect_extension = 0
+                        queue.clear()
+                    elif n_perfect_extension == self.n_perfect_extension_threshold:
                         completed = True
                 else:
                     queue.extend(checkpoints_new)
@@ -514,13 +517,15 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
         is_extended_correctly = False
         _acc_next = 0.0
         _total_loss = 0.0
+        _got_perfect_simultaneously = None
         _n_sub_tasks_correct = 0
         self.update_task_progress(id_prog_acc, n_queue=n_queue+len(checkpoints_new), completed=acc_max*100, description=f'  Acc {acc_max*100:.1f}%' if acc_max != 1 else f'  Acc 100%')
 
-        for results, total_loss, acc_next, n_sub_tasks_correct, opt, n_epoch_trained, answer_map, is_corrected_pixels_maintained_next in training_branch_generator:
+        for results, total_loss, acc_next, n_sub_tasks_correct, opt, n_epoch_trained, answer_map, is_corrected_pixels_maintained_next, got_perfect_simultaneously in training_branch_generator:
             _acc_next = acc_next
             _total_loss = total_loss
             _n_sub_tasks_correct = n_sub_tasks_correct
+            _got_perfect_simultaneously = got_perfect_simultaneously
             acc_max_prev = acc_max
             self.update_task_progress(id_prog_acc, n_queue=n_queue+len(checkpoints_new), completed=acc_max*100, description=f'  Acc {acc_max*100:.1f}%' if acc_max != 1 else f'  Acc 100%')
 
@@ -570,7 +575,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                         **checkpoint_kwargs
                     })
 
-        return checkpoints_new, is_extended_correctly, _acc_next, _total_loss, _n_sub_tasks_correct
+        return checkpoints_new, is_extended_correctly, _acc_next, _total_loss, _n_sub_tasks_correct, _got_perfect_simultaneously
 
     def _training_get_checkpoint_generaotr(self, models: nn.Module, batches_train, answer_map_prev, opt: torch.optim.Optimizer, acc_prev: float, acc_max: float, max_epoch: int, id_prog_e: int):
         t_batch = [batch[1] for batch in batches_train]
@@ -578,6 +583,8 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
         n_repeat_max_acc = 0
         loss_prev = 0
         n_times_constant_loss = 0
+        answer_map_yield_prev = None
+        got_perfect_simultaneously = None
         reach_perfect = False
         e = -1
 
@@ -635,7 +642,12 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                 answer_map = [result['c_decoded'] for result in results]
                 is_corrected_pixels_maintained_next = self.is_corrected_pixels_maintained(answer_map_prev, answer_map) # Prvent extension before finding the input
 
-                yield results, total_loss, acc_next, n_sub_tasks_correct, opt, e+1, answer_map, is_corrected_pixels_maintained_next
+                if acc_next == 1:
+                    got_perfect_simultaneously = True if answer_map_yield_prev is None else self.got_perfect_simultaneously(answer_map_yield_prev)
+
+                answer_map_yield_prev = copy.deepcopy(answer_map)
+                        
+                yield results, total_loss, acc_next, n_sub_tasks_correct, opt, e+1, answer_map, is_corrected_pixels_maintained_next, got_perfect_simultaneously
 
                 if acc_next == 1 and not reach_perfect: # or (e == 0 and is_corrected_pixels_maintained_next) #  or got_perfect_simultaneously is False
                     reach_perfect = True
@@ -788,6 +800,20 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
         #     ['{}'.format((round(acc.item()*100, 1), [model.instance_id for model in _models])) \
         #     for _models, _, _, _, acc, _, _ in queue]
         # ))
+
+    @staticmethod
+    def got_perfect_simultaneously(answer_map):
+        n_wrong_pixels_prev_saved = None
+        for answer_map_prev_batch in answer_map:
+            for answer_map_prev_one in answer_map_prev_batch:
+                n_wrong_pixels_prev = sum([1 for row in answer_map_prev_one for pixel_correct in row if not pixel_correct])
+
+                if n_wrong_pixels_prev_saved is None:
+                    n_wrong_pixels_prev_saved = n_wrong_pixels_prev
+                    continue
+                elif n_wrong_pixels_prev != n_wrong_pixels_prev_saved:
+                    return False
+        return True
 
 
 class PixelEachSubstitutorL(PixelEachSubstitutorBase):
