@@ -553,7 +553,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                 else:
                     duplicated_performace = False
                     for checkpoint in checkpoints_new:
-                        if acc_prev == acc_next and self.is_same_performance(answer_map_prev, answer_map):
+                        if checkpoint['acc_prev'] == acc_next and self.is_same_performance(checkpoint['answer_map'], answer_map):
                             duplicated_performace = True
                             break
                     if duplicated_performace:
@@ -637,7 +637,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
 
                 yield results, total_loss, acc_next, n_sub_tasks_correct, opt, e+1, answer_map, is_corrected_pixels_maintained_next
 
-                if acc_next == 1 and not reach_perfect: # or (e == 0 and is_corrected_pixels_maintained_next) #  or got_perfect_simultaneously is False
+                if acc_next == 1 and not reach_perfect: # or (e == 0 and is_corrected_pixels_maintained_next)
                     reach_perfect = True
                     max_epoch = e + self.epochs_after_best
 

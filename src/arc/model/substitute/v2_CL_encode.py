@@ -7,11 +7,11 @@ from arc.model.components.cross_attn import MultiheadCrossAttentionLayer
 
 
 class ColorEncoder(nn.Module): 
-    def __init__(self, C_dims_encoded, L_dim, dropout=0.1, bias=False):
+    def __init__(self, C_dims_encoded, L_dim, L_dim_feedforward, dropout=0.1, bias=False):
         super().__init__()
 
         self.attn_L_self = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(L_dim, L_dim, 1, dropout=dropout, batch_first=True, bias=bias),
+            nn.TransformerEncoderLayer(L_dim, L_dim, L_dim_feedforward, dropout=dropout, batch_first=True, bias=bias),
             num_layers=1,
             enable_nested_tensor=False,
         )
@@ -67,6 +67,8 @@ class LocationEncoder(nn.Module):
 
         # 2. Encode Locations
         x = x.view(NS*VC, -1)
+        x = self.attn_V_self(x) # [L, VC] < [L, VC]
+        x = self.attn_C_self(x.transpose(1, 2)).transpose(1, 2) # [L, VC] < [L, VC]
         x_VC_VL = self.ff_L(x) # [N*S*C, L]
         x_VC_VL = x_VC_VL.reshape(NS, VC, -1)
 
@@ -74,12 +76,12 @@ class LocationEncoder(nn.Module):
 
 
 class Encoder(nn.Module): 
-    def __init__(self, C_dims_encoded, L_dims_encoded, dropout=0.1, bias=False):
+    def __init__(self, C_dims_encoded, L_dims_encoded, L_dim_feedforward, C_dim_feedforward, dropout=0.1, bias=False):
         super().__init__()
         L_dim = L_dims_encoded[0]
 
-        self.encoder_color = ColorEncoder(C_dims_encoded, L_dim, dropout=dropout, bias=bias)
         self.encoder_location = LocationEncoder(L_dims_encoded, bias=bias)
+        self.encoder_color = ColorEncoder(C_dims_encoded, L_dim, L_dim_feedforward, dropout=dropout, bias=bias)
 
     def forward(self, x):
         NS, C, L = x.shape
@@ -144,7 +146,7 @@ class LocationDecoder(nn.Module):
         self.attn_VL_VL =  MultiheadCrossAttentionLayer(VC_dim, VC_dim, L_dim_feedforward, dropout=dropout, batch_first=True, bias=bias)
         self.attn_L_VL =  MultiheadCrossAttentionLayer(VC_dim, VC_dim, L_dim_feedforward, dropout=dropout, batch_first=True, bias=bias)
         
-    def forward(self, x, mem, x_VC_VL, x_VC):
+    def forward(self, x, x_VC, x_VC_VL, mem):
         NS, C, L = x.shape
 
         # 5. Decode Location
@@ -154,7 +156,7 @@ class LocationDecoder(nn.Module):
 
         return x_VC_mem
 
-    
+
 class ColorDecoder(nn.Module):
     def __init__(self, L_dim, C_dim, L_dims_decoded, L_dim_feedforward=1, C_dim_feedforward=1, dropout=0.1, bias=False):
         super().__init__()
@@ -207,7 +209,7 @@ class Decoder(nn.Module):
         # 🟦🟨🟨  🔳🟩🟩 
         # [VC, L] -> [C, L]
 
-        x_VC_mem = self.decoder_location(x, mem, x_VC_VL, x_VC)
+        x_VC_mem = self.decoder_location(x, x_VC, x_VC_VL, mem)
         y = self.decoder_color(x, x_VC, x_VC_mem)
 
         return y
@@ -219,17 +221,20 @@ class PixelEachSubstitutor(nn.Module):
         assert n_range_search != -1 and W_kernel_max >= 1 + 2*n_range_search and H_kernel_max >= 1 + 2*n_range_search
 
         self.abstractor = PixelVectorExtractor(
-            W_max=W_max,
-            H_max=H_max,
             n_range_search=n_range_search,
             W_kernel_max=W_kernel_max,
             H_kernel_max=H_kernel_max,
+            vec_abs=vec_abs,
+            W_max=W_max,
+            H_max=H_max,
             pad_class_initial=pad_class_initial,
         )
 
         self.encoder = Encoder(
             C_dims_encoded=C_dims_encoded,
             L_dims_encoded=L_dims_encoded,
+            L_dim_feedforward=L_dim_feedforward,
+            C_dim_feedforward=C_dim_feedforward,
             dropout=dropout,
             bias=False,
         )
