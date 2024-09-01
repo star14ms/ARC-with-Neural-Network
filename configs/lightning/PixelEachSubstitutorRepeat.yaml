@@ -23,6 +23,7 @@ params:
   max_depth: 30
   max_epochs_per_AFS: 100
   max_epochs_initial: 200
+  epochs_after_best: 100
 
   n_repeat_max_acc_threshold: 30
   n_perfect_extension_threshold: 1

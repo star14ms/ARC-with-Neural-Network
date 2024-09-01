@@ -99,9 +99,7 @@ class PixelEachSubstitutorConfig:
 
 @dataclass
 class PixelEachSubstitutorRepeatConfig(PixelEachSubstitutorConfig):
-    max_AFS: int = 30
-    max_queue: int = 20
-    max_depth: int = 4
+    pass
 
 ################################################################################################################################################################################################################################################################
 
@@ -125,9 +123,11 @@ class PixelEachSubstitutorLightningConfig(LightningConfigBase):
 
 @dataclass
 class PixelEachSubstitutorRepeatLightningConfig(LightningConfigBase):
+    max_AFS: int = 100 # AFS: Accuracy First Search
     max_queue: int = 20
     max_depth: int = 30
-    max_AFS: int = 100 # AFS: Accuracy First Search
     max_epochs_per_AFS: int = 100
+    max_epochs_initial: int = 200
+    epochs_after_best: int = 100
 
 ################################################################################################################################################################################################################################################################
