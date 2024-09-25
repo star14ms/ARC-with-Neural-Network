@@ -112,6 +112,10 @@ class RichProgressBarCustom(RichProgressBar):
 
 
 class TrainerCustom(Trainer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._testing = False
+
     def _test_impl(
         self,
         model: Optional["pl.LightningModule"] = None,
@@ -145,6 +149,7 @@ class TrainerCustom(Trainer):
         self._data_connector.attach_data(model, train_dataloaders=datamodule.test_dataloader()) ### Customized
         self.state.fn = TrainerFn.FITTING
         self.training = True
+        self._testing = True
 
         assert self.state.fn is not None
         ckpt_path = self._checkpoint_connector._select_ckpt_path(
@@ -155,6 +160,6 @@ class TrainerCustom(Trainer):
         results = convert_tensors_to_scalars(results)
 
         assert self.state.stopped
-        self.testing = False
+        self._testing = False
 
         return results

@@ -135,5 +135,6 @@ class PixelEachSubstitutorRepeatLightningConfig(LightningConfigBase):
     max_epochs_per_AFS: int = 100
     max_epochs_initial: int = 200
     epochs_after_best: int = 100
+    time_limit_per_trial: int | None = None # Seconds
 
 ################################################################################################################################################################################################################################################################

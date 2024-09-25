@@ -6,6 +6,7 @@ from collections import defaultdict
 import os
 import copy
 import warnings
+import time
 from rich import print
 
 from arc.model.substitute.v0_no_encode import PixelEachSubstitutorNonColorEncoding
@@ -14,6 +15,7 @@ from arc.model.substitute.v2_CL_encode import PixelEachSubstitutor
 from arc.preprocess import one_hot_encode
 from arc.utils.visualize import visualize_image_using_emoji, plot_xytc
 from arc.utils.print import is_notebook
+from classify import ARCDataClassifier
 
 
 class LightningModuleBase(pl.LightningModule):
@@ -115,6 +117,7 @@ class LightningModuleBase(pl.LightningModule):
             self.trainer.progress_bar_metrics['Queue'] = '{}'.format(n_queue)
         if depth is not None:
             self.trainer.progress_bar_metrics['Depth'] = '{}'.format(depth)
+        # self.trainer.progress_bar_metrics['Time Spent'] = '{:.1f}s'.format(self.get_time_spent_for_task())
         self.progress._update_metrics(self.trainer, self)
         self.progress.refresh()
 
@@ -136,20 +139,25 @@ class LightningModuleBase(pl.LightningModule):
         results_with_idx = sorted(results_with_idx, key=lambda x: (x[1]['accuracy'], -x[1]['loss']), reverse=True)
         results = [result for _, result in results_with_idx]
         idxs_priority = [i for i, _ in results_with_idx]
+        n_subtask = len(results[0]['outputs'])
+        submission_task = [{} for _ in range(n_subtask)]
 
-        submission_task = [{} for _ in range(len(results[0]['outputs']))]
-        for i, result in enumerate(results[:self.top_k_submission]):
-            for j, output in enumerate(result['outputs']):
+        for i in range(self.top_k_submission):
+            if i >= len(results):
+                result = [torch.zeros([2, 2], dtype=torch.int) for _ in range(n_subtask)]
+            else:
+                result = results[i]['outputs']
+
+            for j, output in enumerate(result):
                 submission_task[j][f'attempt_{i+1}'] = output.tolist()
 
         self.submission[task_id] = submission_task
         
-        # change the format of the test results reordering based on the priority
-        self.test_results[task_id] = [self.test_results[task_id][idx] for idx in idxs_priority]
-        self.test_results[task_id] = list(zip(*self.test_results[task_id]))
+        return idxs_priority
 
     def print_and_write(self, *objects, end='\n'):
-        print(*objects, end=end)
+        if not self.is_notebook:
+            print(*objects, end=end)
         if self.log_file is not None:
             with open(self.log_file, 'a') as f:
                 print(*objects, end=end, file=f)
@@ -175,8 +183,7 @@ class PixelEachSubstitutorBase(LightningModuleBase):
         self.loss_fn = nn.CrossEntropyLoss()
 
         if self.top_k_submission > n_trials:
-            self.top_k_submission = n_trials
-            warnings.warn(f'top_k_submission should be less than or equal to n_trials. top_k_submission is set to {n_trials}.')
+            warnings.warn(f'top_k_submission ({self.top_k_submission}) should be less than or equal to n_trials ({n_trials}). Rest trials will be filled with zeros.')
 
         self.n_trials = n_trials
         self.params_for_each_cell = ([{}] + (hyperparams_for_each_cell if hyperparams_for_each_cell else [])) if 'Repeat' in self.__class__.__name__ else hyperparams_for_each_cell
@@ -186,9 +193,31 @@ class PixelEachSubstitutorBase(LightningModuleBase):
     def training_step(self, batches):
         batches_train, batches_test, task_id = batches
         self.print_and_write('Task ID: [bold white]{}[/bold white]'.format(task_id))
+        self.no_label = True if len(batches_test[0][1].shape) == 2 else False
+
+        is_same_shape = all(ARCDataClassifier.is_same_shape([x], [t]) for (x, t) in batches_train)
+        # is_small_size_less_than_21 = all(ARCDataClassifier.is_shape_size_in([x], [t], start=1, stop=21, bool=True) for (x, t) in batches_train)
+
+        if not is_same_shape: # or not is_small_size_less_than_21
+            if not is_same_shape:
+                self.print_and_write('The shapes of the inputs and targets are different. Skipping the task.')
+            # if not is_small_size_less_than_21:
+            #     self.print_and_write('The shapes of the inputs and targets are not in the range of 1 to 20. Skipping the task.')
+
+            if self.current_epoch+1 == self.trainer.max_epochs:
+                self.add_submission(task_id, [{
+                    'accuracy': 0,
+                    'loss': 0,
+                    'outputs': [torch.zeros([2, 2], dtype=torch.int) for _ in range(len(batches_test))],
+                } for _ in range(self.n_trials)])
+
+            return {
+                'n_trials_correct': 0,
+                'n_trials_total': self.n_trials,
+                'is_task_correct': False,
+            }
 
         id_prog_trial = self.progress._add_task(self.n_trials, f'Trial 0/{self.n_trials}')
-        self.no_label = True if len(batches_test[0][1].shape) == 2 else False
 
         results = []
         for n in range(self.n_trials):
@@ -211,9 +240,16 @@ class PixelEachSubstitutorBase(LightningModuleBase):
         self.progress.progress.remove_task(id_prog_trial)
 
         if self.current_epoch+1 == self.trainer.max_epochs:
-            self.add_submission(task_id, results)
+            idxs_priority = self.add_submission(task_id, results)
 
-        is_task_correct, n_trials_correct, n_trials_total = self.get_task_result(task_id, len(batches_test))
+            # change the format of the test results reordering based on the priority
+            self.test_results[task_id] = [self.test_results[task_id][idx] for idx in idxs_priority]
+            self.test_results[task_id] = list(zip(*self.test_results[task_id]))
+            
+        if not self._trainer._testing:
+            is_task_correct, n_trials_correct, n_trials_total = self.get_task_result(task_id, len(batches_test))
+        else:
+            is_task_correct, n_trials_correct, n_trials_total = None, 0, 0
 
         return {
             'n_trials_correct': n_trials_correct,
@@ -375,7 +411,7 @@ class PixelEachSubstitutorBase(LightningModuleBase):
 
 
 class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
-    def __init__(self, max_AFS=100, max_queue=20, max_depth=30, max_epochs_per_AFS=100, max_epochs_initial=200, epochs_after_best=100, n_repeat_max_acc_threshold=30, n_perfect_extension_threshold=3, prior_to_corrected_pixels=False, verbose=False, *args, **kwargs):
+    def __init__(self, max_AFS=100, max_queue=20, max_depth=30, max_epochs_per_AFS=100, max_epochs_initial=200, epochs_after_best=100, time_limit_per_trial=600, n_repeat_max_acc_threshold=30, n_perfect_extension_threshold=3, prior_to_corrected_pixels=False, verbose=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.max_AFS = max_AFS
         self.max_queue = max_queue
@@ -383,6 +419,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
         self.max_epochs_per_AFS = max_epochs_per_AFS
         self.max_epochs_initial = max_epochs_initial
         self.epochs_after_best = epochs_after_best
+        self.time_limit_per_trial = time_limit_per_trial
 
         self.n_repeat_max_acc_threshold = n_repeat_max_acc_threshold
         self.n_perfect_extension_threshold = n_perfect_extension_threshold
@@ -392,7 +429,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
         self.verbose = verbose
 
     def _training_step(self, batches_train, task_id, n):
-        if self.model_kwargs.get('emerge_color') is False:
+        if self.model_kwargs.get('emerge_color', False):
             self.emerge_color = self.check_output_has_emerged_color(batches_train)
 
         def __build_models():
@@ -448,6 +485,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
         completed = False
         n_perfect_extension = 0
         key_sorting = lambda x: (x['is_corrected_pixels_maintained'], x['acc_max']) if self.prior_to_corrected_pixels else (x['acc_max'])
+        self.time_task_start = time.perf_counter()
 
         for i in range(self.max_AFS): # AFS: Accuracy First Search
             self.update_task_progress(id_prog_afs, i+1, task_id=task_id, n_queue=len(queue), depth=max(len(queue[0]['models']), 1), description='  AFS {}'.format(f'{i+1}/{self.max_AFS}'))
@@ -481,17 +519,20 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                         completed = True
                 else:
                     queue.extend(checkpoints_new)
-                    self.print_and_write([model.instance_id for model in models])
-                    self.print_and_write(is_corrected_pixels_maintained, round(acc_prev.item()*100, 2), '->')
-                    self.print_and_write([(x['is_corrected_pixels_maintained'], round(x['acc_prev'].item()*100, 2), x['n_epochs_trained'][-1]) for x in checkpoints_new])
-                    self.print_and_write()
+                    
+                    if self.verbose:
+                        self.print_and_write([model.instance_id for model in models])
+                        self.print_and_write(is_corrected_pixels_maintained, round(acc_prev.item()*100, 2), '->')
+                        self.print_and_write([(x['is_corrected_pixels_maintained'], round(x['acc_prev'].item()*100, 2), x['n_epochs_trained'][-1]) for x in checkpoints_new])
+                        self.print_and_write()
 
                 if completed or (len(models) > 1 and len(queue) > 0 and acc_next >= acc_max) or (len(models) == 1 and idx_cell == len(self.params_for_each_cell)-2):
                     break
 
             if len(queue) == 0:
                 queue.append(checkpoint0)
-            if completed:
+
+            if completed or (self.time_limit_per_trial is not None and self.get_time_spent_for_task() >= self.time_limit_per_trial):
                 break
 
         self.progress.progress.remove_task(id_prog_afs)
@@ -524,8 +565,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
             _acc_next = acc_next
             _total_loss = total_loss
             _n_sub_tasks_correct = n_sub_tasks_correct
-            acc_max_prev = acc_max
-            self.update_task_progress(id_prog_acc, n_queue=n_queue+len(checkpoints_new), completed=acc_max*100, description=f'  Acc {acc_max*100:.1f}%' if acc_max != 1 else f'  Acc 100%')
+            self.update_task_progress(id_prog_acc, n_queue=n_queue+len(checkpoints_new), completed=acc_next*100, description=f'  Acc {acc_next*100:.1f}%' if acc_next != 1 else f'  Acc 100%')
 
             if is_corrected_pixels_maintained_next:
                 for j in range(len(checkpoints_new)-1, -1, -1):
@@ -596,8 +636,9 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                     y = model(y, epoch=e, batch_idx=i, return_prob=False if depth == len(models)-1 else True)
 
                     if depth != len(models)-1:
-                        _, max_indices = torch.max(y, dim=1)
-                        y = torch.nn.functional.one_hot(max_indices, num_classes=y.size(1)).to(x.device, x.dtype).permute(0, 3, 1, 2)
+                        max_indices = torch.argmax(y, dim=1)
+                        y = torch.zeros_like(y)
+                        y = torch.scatter(y, 1, max_indices.unsqueeze(1), 1)
 
                 loss = self.loss_fn(y, t) # if not label_input else x
                 if e != 0:
@@ -630,7 +671,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
             else:
                 n_times_constant_loss = 0
                 loss_prev = total_loss
-
+                
             if ((len(models) != 1 or acc_prev < acc_next) and n_repeat_max_acc > self.n_repeat_max_acc_threshold) or (total_loss > 0.5 and n_times_constant_loss == 10):
                 break
 
@@ -665,8 +706,9 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                 ys.append((y, 'Depth {}'.format(depth+1)))
 
                 if depth != len(self.models)-1:
-                    _, max_indices = torch.max(y, dim=1)
-                    y = torch.nn.functional.one_hot(max_indices, num_classes=y.size(1)).to(x.device, x.dtype).permute(0, 3, 1, 2)
+                    max_indices = torch.argmax(y, dim=1)
+                    y = torch.zeros_like(y)
+                    y = torch.scatter(y, 1, max_indices.unsqueeze(1), 1)
 
             loss = self.loss_fn(y, t)
             total_loss += loss
@@ -710,6 +752,57 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
             'n_sub_tasks_correct': self.n_sub_tasks_correct, 
             'n_sub_tasks_total': len(batches_test),
         }, outputs
+        
+    def _test_step_test(self, batches_test, task_id, n, max_depth=20):
+        task_result = []
+        outputs = []
+        ys = []
+        for model in self.models:
+            model.eval()
+        if len(self.models) != 1:
+            for i in range(max_depth-len(self.models)):
+                self.models.append(self.models[-1])
+
+        for i, (x, _) in enumerate(batches_test):
+            y = x
+            for depth, model in enumerate(self.models):
+                y = model(y, return_prob=False if depth == len(self.models)-1 else True)
+                ys.append((y, 'Depth {}'.format(depth+1)))
+
+                if depth != len(self.models)-1:
+                    max_indices = torch.argmax(y, dim=1)
+                    y = torch.zeros_like(y)
+                    y = torch.scatter(y, 1, max_indices.unsqueeze(1), 1)
+
+            y_decoded = torch.argmax(y.detach().cpu(), dim=1).long()
+            outputs.append(y_decoded[0])
+
+            xytc = [(x, 'Input')] + ys
+            xytc_batches = [xytc[i:i+4] for i in range(0, len(xytc), 4)]
+            
+            for xytc_batch in xytc_batches:
+                titles = [title for _, title in xytc_batch]
+                xytcs = [xytc for xytc, _ in xytc_batch]
+                visualize_image_using_emoji(*xytcs, titles=titles)
+                visualize_image_using_emoji(*xytcs, titles=titles, output_file=self.log_file)
+
+            if self.is_notebook:
+                plot_xytc(x[0], y[0], task_id=task_id)
+            else:
+                visualize_image_using_emoji(x[0], y[0])
+
+            task_result.append({
+                'input': x[0].tolist(),
+                'output': y_decoded[0].tolist(),
+                'hparams_ids': [model.id for model in self.models],
+            })
+
+            self.print_and_write("Test {}".format(i+1))
+
+        if self.trainer.current_epoch+1 == self.trainer.max_epochs:
+            self.test_results[task_id].append(task_result)
+
+        return {}, outputs
 
     def copy_model_and_opt(self, models, opt, idx_cell):
         kwargs = self.params_for_each_cell[idx_cell if len(models) != 1 or len(self.params_for_each_cell) == 1 else idx_cell+1]
@@ -723,6 +816,9 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
         opt_copied.load_state_dict(copy.deepcopy(opt.state_dict()))
         
         return models_copied, opt_copied
+
+    def get_time_spent_for_task(self):
+        return time.perf_counter() - self.time_task_start
 
     @staticmethod
     def get_avg_accuracy(batches, return_n_sub_tasks_correct=False, return_corrects_info=False):

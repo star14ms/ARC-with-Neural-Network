@@ -1,7 +1,7 @@
 name: "PixelEachSubstitutorRepeat"
 
 params:
-  n_trials: 1
+  n_trials: 2
   hyperparams_for_each_cell: [
     # {
     #   n_range_search: 0,
@@ -18,15 +18,16 @@ params:
   ]
   train_loss_threshold_to_stop: 0.01
 
-  max_AFS: 100 # AFS: Accuracy First Search
+  max_AFS: 24 # AFS: Accuracy First Search
   max_queue: 20
-  max_depth: 30
+  max_depth: 24
   max_epochs_per_AFS: 100
-  max_epochs_initial: 200
+  max_epochs_initial: 150
   epochs_after_best: 100
+  time_limit_per_trial: null # Seconds
 
-  n_repeat_max_acc_threshold: 30
+  n_repeat_max_acc_threshold: 40
   n_perfect_extension_threshold: 1
   prior_to_corrected_pixels: True
 
-  verbose: True
+  verbose: False

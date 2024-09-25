@@ -4,6 +4,7 @@ import torch.nn.functional as F
 
 from arc.model.components.pixel_vector_extractor import PixelVectorExtractor
 from arc.model.components.cross_attn import MultiheadCrossAttentionLayer
+from arc.utils.visualize import visualize_image_using_emoji
 
 
 class ColorEncoder(nn.Module): 
@@ -38,7 +39,7 @@ class ColorEncoder(nn.Module):
         x = x.view(NS, C, L)
         x_VC = self.attn_L_self(x) # [C, L] < [C, L] # (🟧 -> 🟦)
         x_VC = self.ff_C(x_VC.transpose(1, 2)).transpose(1, 2) # [L, C] -> [L, VC]
-        x = F.softmax(x_VC, dim=1) # [VCp, L]
+        x = x_VC.transpose(1, 0).softmax(dim=0).transpose(1, 0) # [VCp, L]
 
         return x, x_VC
     
@@ -148,7 +149,7 @@ class Reasoner(nn.Module):
         mem = self.attn_VC_self(mem.transpose(1, 2)).transpose(1, 2)  # [VL, VC] < [VL, VC]
 
         # 4. Determine Encoded Output Class
-        mem = F.softmax(mem, dim=1) # [VCp, VL]
+        mem = mem.transpose(1, 0).softmax(dim=0).transpose(1, 0) # [VCp, VL]
 
         return mem
 
@@ -166,7 +167,7 @@ class LocationDecoder(nn.Module):
         # 5. Decode Location
         x_VC_VL = self.attn_L_VL(x_VC_VL.transpose(1, 2), mem.transpose(1, 2)) # [VL, VC] < [VL, VC]
         x_VC_mem = self.attn_VL_VL(x_VC.transpose(1, 2), x_VC_VL).transpose(1, 2) # [L, VC]
-        x_VC_mem = F.softmax(x_VC_mem, dim=1) # [VC, L]
+        x_VC_mem = x_VC_mem.transpose(1, 0).softmax(dim=0).transpose(1, 0) # [VC, L]
 
         return x_VC_mem
 
@@ -299,16 +300,21 @@ class PixelEachSubstitutor(nn.Module):
         # 🔳🟩🟩  🟦🟨🟨  🟦🟨🟨  🔳🟩🟩 
 
         x = self.abstractor(x)
-        # from arc.utils.visualize import visualize_image_using_emoji
-        # visualize_image_using_emoji(x[48].reshape(10, 7, 7))
         x_VC_VL, x_VC = self.encoder(x)
         mem = self.reasoner(x_VC_VL)
         y = self.decoder(x, mem, x_VC_VL, x_VC)
 
         y = y.view(N, H, W, C).permute(0, 3, 1, 2) # [N, C, H, W]
+        
+        # visualize_image_using_emoji(*y)
+        # y_new = y.transpose(1, 0).softmax(dim=0).transpose(1, 0)
+        # visualize_image_using_emoji(*y_new)
+        # y[0,:,:5,:1].permute(1, 2, 0)
+        # y_new[0,:,:5,:1].permute(1, 2, 0)
+        # breakpoint()
 
-        if return_prob:
-            y = F.softmax(y, dim=1) # [NS, C_prob]
+        # if return_prob:
+        #     y = y.transpose(1, 0).softmax(dim=0).transpose(1, 0) # [NS, C_prob]
 
         return y
 

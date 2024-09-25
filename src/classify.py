@@ -187,11 +187,17 @@ class ARCDataClassifier:
         range_size = range(start, stop)
 
         for x, y in zip(xs, ys):
-            if not (x.shape[0] in range_size and 
+            if (len(x.shape) == 2 and not (
+                    x.shape[0] in range_size and 
                     x.shape[1] in range_size and 
                     y.shape[0] in range_size and 
                     y.shape[1] in range_size
-                ):
+                )) or (len(x.shape) > 2 and not (
+                    x.shape[-1] in range_size and 
+                    x.shape[-2] in range_size and 
+                    y.shape[-1] in range_size and 
+                    y.shape[-2] in range_size
+                )):
                 return False if kwargs['bool'] else True
         return True if kwargs['bool'] else False
     
@@ -213,7 +219,7 @@ tasks_fulid = '''\
 444801d8 *f1cefba8 d4f3cd78 aba27056'''
 
 tasks_sequential_simple_line = '''\
-d9f24cd1 3bd67248 5c0a986e *7ddcd7ec'''
+*d9f24cd1 *3bd67248 5c0a986e *7ddcd7ec'''
 # 99fa7670 *d06dbe63 *f151fac 508bd3b6'''
 # *d07ae81c *e21d9049 *855e0971 *bd4472b8 *264363fd *ec883f72 *25d487eb *82819916 *6d58a25d *6e19193c *d43fd935 *1f0c79e5 *b8cdaf2b *8d510a79 *41e4d17e *623ea044 *a78176bb *ea786f4a *e40b9e2f
 

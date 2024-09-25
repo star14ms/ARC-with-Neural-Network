@@ -288,7 +288,7 @@ def visualize_image_using_emoji(*images, titles=['Input', 'Output', 'Answer', 'C
     def add_space(emoji):
         if emoji == '◽' and output_file:
             return '⬛️'
-        elif emoji == '⏹️' and (not output_file or is_ipython):
+        elif emoji == '⏹️' and (not output_file and not is_ipython):
             return emoji + ' '
         else:
             return emoji

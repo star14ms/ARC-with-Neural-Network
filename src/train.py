@@ -42,9 +42,11 @@ def train(config: DictConfig, model=None, filter_funcs=None, test=False, return_
         save_dir_parent = os.path.join('outputs', sorted(os.listdir('outputs/'))[-1])
         save_dir = os.path.join(save_dir_parent, sorted(os.listdir(save_dir_parent))[-1])
     elif save_dir is not None:
-        now = datetime.datetime.now()
-        save_dir = os.path.join(save_dir, now.strftime('%Y-%m-%d'), now.strftime('%H-%M-%S'))
-        os.makedirs(save_dir, exist_ok=True)
+        pass
+        # now = datetime.datetime.now()
+        # save_dir = os.path.join(save_dir, now.strftime('%Y-%m-%d'), now.strftime('%H-%M-%S'))
+        # os.makedirs(save_dir, exist_ok=True)
+    save_dir = './'
 
     if model is None or isinstance(model, type):
         model = model if isinstance(model, type) else None
@@ -64,7 +66,7 @@ def train(config: DictConfig, model=None, filter_funcs=None, test=False, return_
     })
 
     trainer = TrainerCustom(
-        accelerator='cpu',
+        # accelerator='cpu',
         max_epochs=max_epochs, 
         logger=logger, 
         log_every_n_steps=1, 
@@ -76,7 +78,10 @@ def train(config: DictConfig, model=None, filter_funcs=None, test=False, return_
     datamodule = ARCDataModule(local_world_size=trainer.num_devices, filter_funcs=filter_funcs, **hparams_data, **kwargs_data)
 
     # Train the model
-    trainer.fit(model, datamodule=datamodule, ckpt_path=ckpt_path)
+    if not test:
+        trainer.fit(model, datamodule=datamodule, ckpt_path=ckpt_path)
+    else:
+        trainer.test(model, datamodule=datamodule, ckpt_path=ckpt_path)
     print('Seed used', torch.seed())
 
     # Save the model to disk (optional)
@@ -96,8 +101,8 @@ def train(config: DictConfig, model=None, filter_funcs=None, test=False, return_
         json.dump(model.submission, f)
     print("Submission saved to: '{}'".format(save_path))
 
-    if test:
-        test_fn(config, model)
+    # if test:
+    #     test_fn(config, model)
 
     if return_model:
         return model
