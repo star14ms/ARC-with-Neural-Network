@@ -278,7 +278,7 @@ def print_image_with_probs(*images):
     print()
 
 
-def visualize_image_using_emoji(*images, titles=['Input', 'Output', 'Answer', 'Correct'], output_file=None, emoji_map=['⬛️', '🟦', '🟥', '🟩', '🟨', '⬜️', '🟪', '🟧', '⏹️', '🟫', '◽️'], padding_idx=-1):
+def visualize_image_using_emoji(*images, titles=['Input', 'Output', 'Answer', 'Correct'], output_file=None, emoji_map=['⬛️', '🟦', '🟥', '🟩', '🟨', '⬜️', '🟪', '🟧', '⏹️', '🟫', '◽️'], padding_idx=-1, return_str=False):
     '''
     Parameters:
         `emoji_map`: `list`
@@ -302,7 +302,7 @@ def visualize_image_using_emoji(*images, titles=['Input', 'Output', 'Answer', 'C
     line = ''
     if titles:
         for title, image_width in zip(titles, [image.shape[1] for image in images]):
-            line += title.ljust(image_width * 2)
+            line += title.ljust(image_width * 2) + '  '
         line += '\n'
 
     for h in range(n_lines):
@@ -322,5 +322,7 @@ def visualize_image_using_emoji(*images, titles=['Input', 'Output', 'Answer', 'C
     if output_file:
         with open(output_file, 'a') as f:
             f.write(line + '\n')
+    elif return_str:
+        return line + '\n'
     else:
         print(line)

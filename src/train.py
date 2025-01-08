@@ -2,6 +2,7 @@
 import torch
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TensorBoardLogger
+from pytorch_lightning.trainer.connectors.accelerator_connector import _AcceleratorConnector
 import os
 import json
 
@@ -12,6 +13,7 @@ from omegaconf import OmegaConf, DictConfig
 import datetime
 from rich import print
 from rich.traceback import install
+from arc.utils.util import echo
 install()
 
 import arc.model as config
@@ -52,8 +54,7 @@ def train(config: DictConfig, model=None, filter_funcs=None, test=False, return_
         model = model if isinstance(model, type) else None
         model_class = get_model_class(config.model.name if model is None else model.__name__)
         model = model_class(lr=lr, model=model, save_dir=save_dir, **hparams_lightning, **hparams_model)
-        print(OmegaConf.to_yaml(config))
-        print(model)
+        echo(OmegaConf.to_yaml(config), model, sep="\n")
 
     # Initialize a trainer
     logger = TensorBoardLogger("./src/lightning_logs/", name=model.__class__.__name__)
@@ -66,7 +67,7 @@ def train(config: DictConfig, model=None, filter_funcs=None, test=False, return_
     })
 
     trainer = TrainerCustom(
-        # accelerator='cpu',
+        accelerator="cpu" if _AcceleratorConnector._choose_auto_accelerator() == "mps" else "auto", # mps is slower than cpu
         max_epochs=max_epochs, 
         logger=logger, 
         log_every_n_steps=1, 
@@ -82,24 +83,24 @@ def train(config: DictConfig, model=None, filter_funcs=None, test=False, return_
         trainer.fit(model, datamodule=datamodule, ckpt_path=ckpt_path)
     else:
         trainer.test(model, datamodule=datamodule, ckpt_path=ckpt_path)
-    print('Seed used', torch.seed())
+    echo("\nSeed used: {}".format(torch.initial_seed()))
 
     # Save the model to disk (optional)
     # save_path = os.path.join(save_dir, '{}.ckpt'.format(model.model.__class__.__name__))
     # trainer.save_checkpoint(save_path)
-    # print('Model saved to:', save_path)
+    # echo("Model saved to: {}".format(save_path))
 
     # Save the test results to disk (optional)
     save_path = os.path.join(save_dir, 'test_results.json')
     with open(save_path, 'w') as f:
         json.dump(model.test_results, f)
-    print("Test results saved to: '{}'".format(save_path))
+    echo("Test results saved to: {}".format(save_path))
 
     # Save the submission to disk (optional)
     save_path = os.path.join(save_dir, 'submission.json')
     with open(save_path, 'w') as f: 
         json.dump(model.submission, f)
-    print("Submission saved to: '{}'".format(save_path))
+    echo("Submission saved to: {}".format(save_path))
 
     # if test:
     #     test_fn(config, model)
