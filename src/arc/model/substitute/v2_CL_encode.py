@@ -277,7 +277,7 @@ class PixelEachSubstitutor(nn.Module):
             VL_dim=L_dims_encoded[-1],
             VC_dim=C_dims_encoded[-1],
             L_dim=L_dims_encoded[0],
-            C_dim=n_class,
+            C_dim=C_dims_encoded[0],
             L_dims_decoded=L_dims_decoded,
             emerge_color=emerge_color,
             L_dim_feedforward=L_dim_feedforward,
@@ -286,7 +286,7 @@ class PixelEachSubstitutor(nn.Module):
             bias=False,
         )
 
-    def forward(self, x, return_prob=False, **kwargs):
+    def forward(self, x, memory_channel, return_prob=False, **kwargs):
         N, C, H, W = x.shape
 
         # Task: 22168020
@@ -298,14 +298,30 @@ class PixelEachSubstitutor(nn.Module):
         # 🔳🔳🔳  🟦🟦🟦  🟦🟦🟦  🔳🔳🔳
         # 🔳🔳🟧  🟦🟦🟦  🟦🟦🟦  🔳🔳🟧
         # 🔳🟩🟩  🟦🟨🟨  🟦🟨🟨  🔳🟩🟩 
+        
+        N, _, H, W = x.shape
+        # visualize_image_using_emoji(x[0])
+        
+        # attach memory_channel to x
+        memory_channel = memory_channel.unsqueeze(1)
+        x = torch.cat([x, memory_channel], dim=1)
 
-        x = self.abstractor(x)
+        x = self.abstractor(x) # [N*H*W, C+1, H_max*W_max]
+        C = x.shape[1]
+
+        # W_max = self.abstractor.extract_rel_vec.W_kernel_max
+        # H_max = self.abstractor.extract_rel_vec.H_kernel_max
+        # for i in range(H*W):
+        #     x_slice = x.reshape(N, H*W, C, W_max, H_max)[0][i]
+        #     visualize_image_using_emoji(x_slice)
+
         x_VC_VL, x_VC = self.encoder(x)
         mem = self.reasoner(x_VC_VL)
         y = self.decoder(x, mem, x_VC_VL, x_VC)
 
-        y = y.view(N, H, W, C).permute(0, 3, 1, 2) # [N, C, H, W]
-        
+        y = y[:, :-1] # Remove the padding class
+        y = y.view(N, H, W, C-1).permute(0, 3, 1, 2) # [N, C, H, W]
+
         # visualize_image_using_emoji(*y)
         # y_new = y.transpose(1, 0).softmax(dim=0).transpose(1, 0)
         # visualize_image_using_emoji(*y_new)

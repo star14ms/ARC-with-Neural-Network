@@ -180,6 +180,7 @@ output/task_visualization/*
 
 # Sub Repository
 repo/
+torchview_custom/
 
 # For MAC
 .DS_Store

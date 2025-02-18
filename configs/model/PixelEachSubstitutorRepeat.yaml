@@ -10,7 +10,7 @@ params:
   H_max: 7
 
   C_encode: True
-  C_dims_encoded: [10, 2]
+  C_dims_encoded: [11, 3] # 11th color: padding, 12th color: previously changed pixel
   emerge_color: True
 
   L_encode: True

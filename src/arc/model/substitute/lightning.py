@@ -638,14 +638,24 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
             y_batch = []
 
             for i, (x, t) in enumerate(batches_train):
-                y = x.detach().clone()
+                y_prev = x.detach().clone()
+                memory_channel = torch.zeros(x.shape[0], x.shape[2], x.shape[3], dtype=torch.int).to(x.device)
                 for depth, model in enumerate(models):
-                    y = model(y, epoch=e, batch_idx=i, return_prob=False if depth == len(models)-1 else True)
+                    y = model(y_prev, memory_channel, epoch=e, batch_idx=i, return_prob=False if depth == len(models)-1 else True)
 
                     if depth != len(models)-1:
                         max_indices = torch.argmax(y, dim=1)
                         y = torch.zeros_like(y)
                         y = torch.scatter(y, 1, max_indices.unsqueeze(1), 1)
+
+                        # Create one more channel which is one-hot and menans changed pixel
+                        y_changed = torch.where(y.argmax(dim=1) != y_prev.argmax(dim=1), 1, 0) # (N, H, W)
+                        # y_changed_green = torch.where(y_changed == 1, 3, 0)
+                        # visualize_image_using_emoji(x[0], t[0], y[0], one_hot_encode(y_changed_green[0]), titles=['Input', 'Target', 'Output', 'Changed'])
+                        # breakpoint()
+
+                        memory_channel = y_changed
+                        y_prev = y
 
                 loss = self.loss_fn(y, t) # if not label_input else x
                 if e != 0:
@@ -707,15 +717,21 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                 self.models.append(self.models[-1])
 
         for i, (x, t) in enumerate(batches_test):
-            y = x
+            y_prev = x
+            memory_channel = torch.zeros(x.shape[0], x.shape[2], x.shape[3], dtype=torch.int).to(x.device)
             for depth, model in enumerate(self.models):
-                y = model(y, return_prob=False if depth == len(self.models)-1 else True)
+                y = model(y_prev, memory_channel, return_prob=False if depth == len(self.models)-1 else True)
                 ys.append((y, 'Depth {}'.format(depth+1)))
 
                 if depth != len(self.models)-1:
                     max_indices = torch.argmax(y, dim=1)
                     y = torch.zeros_like(y)
                     y = torch.scatter(y, 1, max_indices.unsqueeze(1), 1)
+                    
+                    # Create one more channel which is one-hot and menans changed pixel
+                    y_changed = torch.where(y.argmax(dim=1) != y_prev.argmax(dim=1), 1, 0) # (N, H, W)
+                    memory_channel = y_changed  
+                    y_prev = y
 
             loss = self.loss_fn(y, t)
             total_loss += loss
@@ -773,15 +789,21 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                 self.models.append(self.models[-1])
 
         for i, (x, _) in enumerate(batches_test):
-            y = x
+            y_prev = x
+            memory_channel = torch.zeros(x.shape[0], x.shape[2], x.shape[3], dtype=torch.int).to(x.device)
             for depth, model in enumerate(self.models):
-                y = model(y, return_prob=False if depth == len(self.models)-1 else True)
+                y = model(y_prev, memory_channel, return_prob=False if depth == len(self.models)-1 else True)
                 ys.append((y, 'Depth {}'.format(depth+1)))
 
                 if depth != len(self.models)-1:
                     max_indices = torch.argmax(y, dim=1)
                     y = torch.zeros_like(y)
                     y = torch.scatter(y, 1, max_indices.unsqueeze(1), 1)
+
+                    # Create one more channel which is one-hot and menans changed pixel
+                    y_changed = torch.where(y.argmax(dim=1) != y_prev.argmax(dim=1), 1, 0) # (N, H, W)
+                    memory_channel = y_changed
+                    y_prev = y
 
             y_decoded = torch.argmax(y.detach().cpu(), dim=1).long()
             outputs.append(y_decoded[0])
