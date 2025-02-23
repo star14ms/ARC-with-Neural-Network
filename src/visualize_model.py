@@ -13,6 +13,7 @@ import arc.model as config
 from arc.model import get_model_class
 from data import ARCDataModule
 
+import torch
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from torchview_custom.torchview import draw_graphs
 
@@ -54,7 +55,7 @@ def visualize_model(config: DictConfig, model=None, filter_funcs=None, **kwargs_
 
     for (batches_train, batches_test, task_id) in dataloader:
         for (x, t) in batches_train:
-            draw_graphs(model, (x,), input_names=['Input'], output_names=['Output'], directory='./model_viz/', hide_module_functions=True, print_code_path=False)
+            draw_graphs(model, (x, torch.zeros(x.shape[0], x.shape[2], x.shape[3])), input_names=['Input'], output_names=['Output'], directory='./model_viz/', hide_module_functions=True, print_code_path=False)
             break
         break
 

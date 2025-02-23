@@ -122,7 +122,7 @@ class LightningModuleBase(pl.LightningModule):
         self.progress._update_metrics(self.trainer, self)
         self.progress.refresh()
 
-    def print_log(self, mode, n_sub_tasks_correct, n_sub_tasks_total, loss, n_AFS=None):
+    def print_log(self, mode, n_sub_tasks_correct, n_sub_tasks_total, loss, n_AFS=None, n_acc_changed=None):
         self.print_and_write('{} Accuracy: {:>5.1f}% Tasks ({}/{}) | {} Loss: {:.4f} {}'.format(
             mode,
             n_sub_tasks_correct / n_sub_tasks_total * 100,
@@ -131,6 +131,7 @@ class LightningModuleBase(pl.LightningModule):
             mode,
             loss,
             f'| N AFS: {n_AFS}' if n_AFS is not None else '',
+            f'| N Acc Changed: {n_acc_changed}' if n_acc_changed is not None else '',
         ))
 
     def add_submission(self, task_id, results):
@@ -164,6 +165,7 @@ class LightningModuleBase(pl.LightningModule):
             self.progress.progress.live.console.print(*objects, sep=sep, end=end)
 
         if self.log_file is not None:
+            objects = list(map(lambda x: x.replace('⏹️ ', '⏹️') if isinstance(x, str) else x, objects))
             with open(self.log_file, 'a') as f:
                 print(*objects, end=end, file=f)
 
@@ -330,7 +332,7 @@ class PixelEachSubstitutorBase(LightningModuleBase):
                 visualize_image_using_emoji(x[0], t[0], y[0], correct_pixels, titles=['Input', 'Target', 'Output', 'Correct'], output_file=self.log_file)
 
             task_result.append({
-                'input': x[0].tolist(),
+                'input': x[0].int().tolist(),
                 'output': y_decoded[0].tolist(),
                 'target': t_decoded[0].tolist(),
                 'correct_pixels': correct_pixels[0].tolist(),
@@ -366,7 +368,7 @@ class PixelEachSubstitutorBase(LightningModuleBase):
                 visualize_image_using_emoji(x[0], y[0])
 
             task_result.append({
-                'input': x[0].tolist(),
+                'input': x[0].int().tolist(),
                 'output': y_decoded[0].tolist(),
                 'hparams_ids': [self.params_for_each_cell[n].get('id')],
             })
@@ -515,7 +517,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                 training_branch_generator = self._training_get_checkpoint_generaotr(models, batches_train, answer_map_prev, opt, acc_prev, acc_max, max_epoch, id_prog_e)
 
                 result = self._training_step_generate_checkpoints(models, opt, training_branch_generator, checkpoint, id_prog_acc, len(queue), idx_cell)
-                checkpoints_new, is_extended_correctly, acc_next, total_loss, n_sub_tasks_correct = result
+                checkpoints_new, is_extended_correctly, acc_next, total_loss, n_sub_tasks_correct, n_acc_changed = result
 
                 if is_extended_correctly:
                     n_perfect_extension += 1
@@ -550,6 +552,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
             'n_sub_tasks_correct': n_sub_tasks_correct,
             'n_sub_tasks_total': n_sub_tasks_total,
             'n_AFS': i+1,
+            'n_acc_changed': n_acc_changed,
         }
 
     def _training_step_generate_checkpoints(self, models: nn.Module, opt: torch.optim.Optimizer, training_branch_generator, checkpoint: dict, id_prog_acc: int, n_queue: int, idx_cell: int):
@@ -566,11 +569,14 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
         _total_loss = 0.0
         _n_sub_tasks_correct = 0
         self.update_task_progress(id_prog_acc, n_queue=n_queue+len(checkpoints_new), completed=acc_max*100, description=f'  Acc {acc_max*100:.1f}%' if acc_max != 1 else f'  Acc 100%')
+        n_acc_changed = 0
 
         for results, total_loss, acc_next, n_sub_tasks_correct, opt, n_epoch_trained, answer_map, is_corrected_pixels_maintained_next in training_branch_generator:
             _acc_next = acc_next
             _total_loss = total_loss
             _n_sub_tasks_correct = n_sub_tasks_correct
+            if acc_next != acc_max:
+                n_acc_changed += 1
             acc_max = max(acc_max, acc_next)
             self.update_task_progress(id_prog_acc, n_queue=n_queue+len(checkpoints_new), completed=acc_max*100, description=f'  Acc {acc_max*100:.1f}%' if acc_max != 1 else f'  Acc 100%')
 
@@ -620,7 +626,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                         **checkpoint_kwargs
                     })
 
-        return checkpoints_new, is_extended_correctly, _acc_next, _total_loss, _n_sub_tasks_correct
+        return checkpoints_new, is_extended_correctly, _acc_next, _total_loss, _n_sub_tasks_correct, n_acc_changed
 
     def _training_get_checkpoint_generaotr(self, models: nn.Module, batches_train, answer_map_prev, opt: torch.optim.Optimizer, acc_prev: float, acc_max: float, max_epoch: int, id_prog_e: int):
         t_batch = [batch[1] for batch in batches_train]
@@ -744,21 +750,17 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
             xytc_batches = [xytc[i:i+4] for i in range(0, len(xytc), 4)]
             
             str_visualization = ''
-            for xytc_batch in xytc_batches:
-                titles = [title for _, title in xytc_batch]
-                xytcs = [xytc for xytc, _ in xytc_batch]
-                str_visualization += visualize_image_using_emoji(*xytcs, titles=titles, return_str=True)
-                visualize_image_using_emoji(*xytcs, titles=titles, output_file=self.log_file)
+            if self.verbose and len(ys) > 1:
+                for xytc_batch in xytc_batches:
+                    titles = [title for _, title in xytc_batch]
+                    xytcs = [xytc for xytc, _ in xytc_batch]
+                    str_visualization += visualize_image_using_emoji(*xytcs, titles=titles, return_str=True)
 
-            if self.is_notebook:
+            if self.verbose and n_correct != n_pixels:
                 str_visualization += visualize_image_using_emoji(x[0], t[0], y[0], c_decoded[0], titles=['Input', 'Target', 'Output', 'Correct'], return_str=True)
-                plot_xytc(x[0], y[0], t[0], c_decoded, task_id=task_id)
-            else:
-                visualize_image_using_emoji(x, t, y, c_decoded, titles=['Input', 'Target', 'Output', 'Correct'])
-            visualize_image_using_emoji(x, t, y, c_decoded, titles=['Input', 'Target', 'Output', 'Correct'], output_file=self.log_file)
 
             task_result.append({
-                'input': x[0].tolist(),
+                'input': x[0].int().tolist(),
                 'output': y_decoded[0].tolist(),
                 'target': t_decoded[0].tolist(),
                 'correct_pixels': c_decoded[0].tolist(),
@@ -812,21 +814,16 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
             xytc_batches = [xytc[i:i+4] for i in range(0, len(xytc), 4)]
             
             str_visualization = ''
-            for xytc_batch in xytc_batches:
-                titles = [title for _, title in xytc_batch]
-                xytcs = [xytc for xytc, _ in xytc_batch]
-                str_visualization += visualize_image_using_emoji(*xytcs, titles=titles, return_str=True)
-                visualize_image_using_emoji(*xytcs, titles=titles, output_file=self.log_file)
+            if self.verbose and len(ys) > 1:
+                for xytc_batch in xytc_batches:
+                    titles = [title for _, title in xytc_batch]
+                    xytcs = [xytc for xytc, _ in xytc_batch]
+                    str_visualization += visualize_image_using_emoji(*xytcs, titles=titles, return_str=True)
 
-            if self.is_notebook:
-                str_visualization += visualize_image_using_emoji(x[0], y[0], titles=['Input', 'Output'], return_str=True)
-                plot_xytc(x[0], y[0], task_id=task_id)
-            else:
-                visualize_image_using_emoji(x[0], y[0])
-            visualize_image_using_emoji(x[0], y[0], output_file=self.log_file)
+            str_visualization += visualize_image_using_emoji(x[0], y[0], titles=['Input', 'Output'], return_str=True)
 
             task_result.append({
-                'input': x[0].tolist(),
+                'input': x[0].int().tolist(),
                 'output': y_decoded[0].tolist(),
                 'hparams_ids': [model.id for model in self.models],
             })
