@@ -5,6 +5,7 @@ from pytorch_lightning import LightningDataModule
 from lightning_fabric.utilities.data import suggested_max_num_workers
 from collections import OrderedDict
 from functools import partial
+import random
 
 from classify import get_filter_funcs
 from arc.preprocess import one_hot_encode, one_hot_encode_changes
@@ -88,9 +89,43 @@ class ARCDataset(Dataset):
     def task_id(self, idx):
         return list(self.challenges.keys())[idx]
 
-    def augment_data(self, augment_test_data):
+    def augment_data(self, augment_test_data, n_color_augmentation=64, color_augmentation=True, location_augmentation=False): ### TODO Detect Which Augmentation to Apply
         '''Augment data by adding all possible rotated and flipped versions without duplicates'''
+        
+        def color_augment(input_tensor, output_tensor=None):
+            # Count the number of unique colors
+            if output_tensor is None:
+                unique_colors = set(input_tensor.numpy().ravel()) - {0}
+            else:
+                unique_colors = set(input_tensor.numpy().ravel()) | set(output_tensor.numpy().ravel()) - {0}
+            num_colors = len(unique_colors)
+            
+            # Generate possible color combinations
+            new_colors = set()
+            while len(new_colors) < n_color_augmentation - 1:
+                new_colors.add(tuple(random.sample(range(1, 9), num_colors))) # Exclude 0 (background color)
+            
+            if output_tensor is None:
+                unique_inputs = _color_augment(input_tensor, unique_colors, new_colors)
+                return unique_inputs
+            else:
+                unique_inputs = _color_augment(input_tensor, unique_colors, new_colors)
+                unique_outputs = _color_augment(output_tensor, unique_colors, new_colors)
+                
+                return unique_inputs, unique_outputs
 
+        def _color_augment(tensor, unique_colors, new_colors): 
+                
+            # Create new tensors with unique color combinations
+            new_tensors = [tensor]
+            for new_color in new_colors:
+                new_tensor = torch.zeros_like(tensor)
+                for i, color in enumerate(unique_colors):
+                    if color != 0:
+                        new_tensor[tensor == color] = new_color[i]
+                new_tensors.append(new_tensor)
+            return new_tensors
+            
         def unique_augmentations(tensor, indices_to_remove=None):
             # Create a set to store unique transformations
             unique_transforms = set()
@@ -142,8 +177,14 @@ class ARCDataset(Dataset):
             
             # Apply augmentations to train data
             for input_tensor, output_tensor in zip(task['train']['input'], task['train']['output']):
-                unique_inputs, indices_to_remove = unique_augmentations(input_tensor)
-                unique_outputs = unique_augmentations(output_tensor, indices_to_remove)
+                if color_augmentation:
+                    unique_inputs, unique_outputs = color_augment(input_tensor, output_tensor)
+                elif location_augmentation:
+                    unique_inputs, indices_to_remove = unique_augmentations(input_tensor)
+                    unique_outputs = unique_augmentations(output_tensor, indices_to_remove)
+                else:
+                    raise ValueError('At least one of color_augmentation or location_augmentation must be True')
+                
                 augmented_task['train']['input'].extend(unique_inputs)
                 augmented_task['train']['output'].extend(unique_outputs)
 
@@ -154,9 +195,12 @@ class ARCDataset(Dataset):
 
             # Apply augmentations to test data (input only)
             for input_tensor in task['test']['input']:
-                unique_inputs, indices_to_remove = unique_augmentations(input_tensor)
-                augmented_task['test']['input'].extend(unique_inputs)
-                indices_to_remove_test[key] = indices_to_remove
+                if color_augmentation:
+                    unique_inputs = color_augment(input_tensor, output_tensor=None)
+                elif location_augmentation:
+                    unique_inputs, indices_to_remove = unique_augmentations(input_tensor)
+                    augmented_task['test']['input'].extend(unique_inputs)
+                    indices_to_remove_test[key] = indices_to_remove
             
             augmented_challenges[key] = augmented_task
         self.challenges = augmented_challenges
@@ -220,10 +264,6 @@ class ARCDataModule(LightningDataModule):
 
         self.num_workers = num_workers if num_workers else suggested_max_num_workers(local_world_size=local_world_size or 1)
         self.kwargs_dataloader = {} if debug else {'num_workers': self.num_workers, 'persistent_workers': True}
-        self.prepare_data()
-
-    def prepare_data(self):
-        self.setup()
 
     def setup(self, stage=None):
         kwargs = {

@@ -49,13 +49,14 @@ def visualize_model(config: DictConfig, model=None, filter_funcs=None, **kwargs_
         print(model)
 
     datamodule = ARCDataModule(filter_funcs=filter_funcs, **hparams_data, **kwargs_data)
+    datamodule.setup()
     dataloader = datamodule.train_dataloader()
     # dataloader = datamodule.test_dataloader()
     # dataloader = datamodule.val_dataloader()
 
     for (batches_train, batches_test, task_id) in dataloader:
         for (x, t) in batches_train:
-            draw_graphs(model, (x, torch.zeros(x.shape[0], x.shape[2], x.shape[3])), input_names=['Input'], output_names=['Output'], directory='./model_viz/', hide_module_functions=True, print_code_path=False)
+            draw_graphs(model, (x, torch.zeros(x.shape[0], x.shape[2], x.shape[3])), input_names=['Input', 'Prev Changed'], output_names=['Output'], directory='./model_viz/', hide_module_functions=True, print_code_path=False)
             break
         break
 
