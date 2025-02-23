@@ -191,6 +191,9 @@ class PixelEachSubstitutorBase(LightningModuleBase):
 
         if self.top_k_submission > n_trials:
             warnings.warn(f'top_k_submission ({self.top_k_submission}) should be less than or equal to n_trials ({n_trials}). Rest trials will be filled with zeros.')
+        elif self.top_k_submission < n_trials:
+            self.top_k_submission = n_trials
+            warnings.warn(f'top_k_submission ({self.top_k_submission}) will be set to n_trials ({n_trials}).')
 
         self.n_trials = n_trials
         self.params_for_each_cell = ([{}] + (hyperparams_for_each_cell if hyperparams_for_each_cell else [])) if 'Repeat' in self.__class__.__name__ else hyperparams_for_each_cell
@@ -695,7 +698,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                 n_times_constant_loss = 0
                 loss_prev = total_loss
                 
-            if ((len(models) != 1 or acc_prev < acc_next) and n_repeat_max_acc > self.n_repeat_max_acc_threshold) or (total_loss > 0.5 and n_times_constant_loss == 10):
+            if ((len(models) != 1 or acc_prev < acc_next) and n_repeat_max_acc > self.n_repeat_max_acc_threshold):
                 break
 
             if (acc_next == 1 or total_loss < self.train_loss_threshold_to_stop or (acc_prev < acc_next and len(models) < self.max_depth)) and (e == max_epoch -1 or not reach_perfect):
