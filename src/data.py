@@ -14,7 +14,7 @@ from arc.constants import get_challenges_solutions_filepath
 
 
 class ARCDataset(Dataset):
-    def __init__(self, challenge_json, solution_json=None, filter_funcs=get_filter_funcs(), one_hot=True, cold_value=-1, augment_data=False, augment_test_data=False, ignore_color=False):
+    def __init__(self, challenge_json, solution_json=None, filter_funcs=get_filter_funcs(), one_hot=True, cold_value=-1, augment_data=False, augment_test_data=True, ignore_color=False):
         self.one_hot = one_hot
         self.cold_value = cold_value
         self.ignore_color = ignore_color
@@ -89,7 +89,7 @@ class ARCDataset(Dataset):
     def task_id(self, idx):
         return list(self.challenges.keys())[idx]
 
-    def augment_data(self, augment_test_data, n_color_augmentation=64, color_augmentation=True, location_augmentation=False): ### TODO Detect Which Augmentation to Apply
+    def augment_data(self, augment_test_data, n_color_augmentation=32, color_augmentation=True, location_augmentation=False): ### TODO Detect Which Augmentation to Apply
         '''Augment data by adding all possible rotated and flipped versions without duplicates'''
         
         def color_augment(input_tensor, output_tensor=None):
@@ -103,8 +103,8 @@ class ARCDataset(Dataset):
             # Generate possible color combinations
             new_colors = set()
             while len(new_colors) < n_color_augmentation - 1:
-                new_colors.add(tuple(random.sample(range(1, 9), num_colors))) # Exclude 0 (background color)
-            
+                new_colors.add(tuple(random.sample(range(1, 10), num_colors))) # Exclude 0 (background color)
+
             if output_tensor is None:
                 unique_inputs = _color_augment(input_tensor, unique_colors, new_colors)
                 return unique_inputs
@@ -164,6 +164,7 @@ class ARCDataset(Dataset):
 
         # Augment challenges data
         augmented_challenges = {}
+        augmented_solutions = {}
         indices_to_remove_test = {}
         for key, task in self.challenges.items():
             augmented_task = {}
@@ -194,22 +195,33 @@ class ARCDataset(Dataset):
                 continue
 
             # Apply augmentations to test data (input only)
-            for input_tensor in task['test']['input']:
+            augmented_test_outputs = []
+            for input_tensor, output_tensor in zip(task['test']['input'], self.solutions[key] if self.solutions is not None else [None] * len(task['test']['input'])):
                 if color_augmentation:
-                    unique_inputs = color_augment(input_tensor, output_tensor=None)
+                    if self.solutions is not None and augment_test_data:
+                        unique_inputs, unique_outputs = color_augment(input_tensor, output_tensor)
+                        augmented_test_outputs.extend(unique_outputs)
                 elif location_augmentation:
                     unique_inputs, indices_to_remove = unique_augmentations(input_tensor)
-                    augmented_task['test']['input'].extend(unique_inputs)
                     indices_to_remove_test[key] = indices_to_remove
-            
+
+                augmented_task['test']['input'].extend(unique_inputs)
+
             augmented_challenges[key] = augmented_task
+
+            if self.solutions is not None and augment_test_data:
+                augmented_solutions[key] = augmented_test_outputs
+
         self.challenges = augmented_challenges
 
         if self.solutions is None or not augment_test_data:
             return
 
+        if color_augmentation:
+            self.solutions = augmented_solutions
+            return
+
         # Augment solutions data
-        augmented_solutions = {}
         for key, task in self.solutions.items():
             augmented_task = []
             
