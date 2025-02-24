@@ -98,14 +98,17 @@ class PixelVectorExtractor(nn.Module):
         if vec_abs:
             self.extract_abs_vec = PixelAbsoluteVectorExtractor(W_max=W_max, H_max=H_max)
 
-    def forward(self, x, output_shape=None):
+    def forward(self, x, memory_channel, output_shape=None):
         if output_shape is None:
             output_shape = x.shape[2:]
 
-        x_vec = self.extract_rel_vec(x) # (29 + 1 + 29)**2 = 2704
+        # attach memory_channel to x
+        memory_channel = memory_channel.unsqueeze(1)
+        x_extended = torch.cat([x, memory_channel], dim=1)
+        x_vec = self.extract_rel_vec(x_extended) # (29 + 1 + 29)**2 = 2704
 
         if self.vec_abs:
-            x_abs = self.extract_abs_vec(x, output_shape) # 30**2 = 900
+            x_abs = self.extract_abs_vec(x_extended, output_shape) # 30**2 = 900
             x_vec = torch.cat([x_vec, x_abs], dim=2)
 
         return x_vec
