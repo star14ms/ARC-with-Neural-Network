@@ -123,7 +123,7 @@ class LightningModuleBase(pl.LightningModule):
         self.progress.refresh()
 
     def print_log(self, mode, n_sub_tasks_correct, n_sub_tasks_total, loss, n_AFS=None, n_acc_changed=None):
-        self.print_and_write('{} Accuracy: {:>5.1f}% Tasks ({}/{}) | {} Loss: {:.4f} {}'.format(
+        self.print_and_write('{} Accuracy: {:>5.1f}% Tasks ({}/{}) | {} Loss: {:.4f} {} {}'.format(
             mode,
             n_sub_tasks_correct / n_sub_tasks_total * 100,
             n_sub_tasks_correct,
@@ -234,7 +234,7 @@ class PixelEachSubstitutorBase(LightningModuleBase):
             info_train = self._training_step(batches_train, task_id, n)
             self.print_log('Train', **info_train)
 
-            info, outputs = self._training_step_test(batches_test, task_id, n) if not self.no_label else self._test_step_test(batches_test, task_id, n)
+            info, outputs = self._training_step_test(batches_test, batches_train, task_id, n) if not self.no_label else self._test_step_test(batches_test, batches_train, task_id, n)
             if not self.no_label:
                 self.print_log('Test', **info)
 
@@ -313,7 +313,7 @@ class PixelEachSubstitutorBase(LightningModuleBase):
             'n_sub_tasks_total': n_sub_tasks_total,
         }
 
-    def _training_step_test(self, batches_test, task_id, n):
+    def _training_step_test(self, batches_test, batches_train, task_id, n):
         total_loss = 0
         self.n_sub_tasks_correct = 0
         task_result = []
@@ -354,7 +354,7 @@ class PixelEachSubstitutorBase(LightningModuleBase):
             'n_sub_tasks_total': len(batches_test),
         }, outputs
 
-    def _test_step_test(self, batches_test, task_id, n):
+    def _test_step_test(self, batches_test, batches_train, task_id, n):
         task_result = []
         outputs = []
 
@@ -649,8 +649,17 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
             for i, (x, t) in enumerate(batches_train):
                 y_prev = x.detach().clone()
                 memory_channel = torch.zeros(x.shape[0], x.shape[2], x.shape[3], dtype=torch.int).to(x.device)
+                
+                # N, C, _, _ = t.shape
+                # count_classes = t.transpose(1, 0).reshape(C, -1).sum(dim=1)
+                # majority_class = torch.argmax(count_classes)
+                # minority_class = torch.argmin(torch.where(count_classes > 0, count_classes, torch.tensor(float('inf')).to(count_classes.device)))
+                # weight_new = torch.ones_like(count_classes)
+                # weight_new[majority_class] = count_classes[majority_class] / count_classes[minority_class]
+                # self.loss_fn.weight = weight_new
+
                 for depth, model in enumerate(models):
-                    y = model(y_prev, memory_channel, epoch=e, batch_idx=i, return_prob=False if depth == len(models)-1 else True)
+                    y = model(y_prev, x, memory_channel, epoch=e, batch_idx=i, return_prob=False if depth == len(models)-1 else True)
 
                     if depth != len(models)-1:
                         max_indices = torch.argmax(y, dim=1)
@@ -666,7 +675,38 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                         memory_channel = y_changed
                         y_prev = y
 
-                loss = self.loss_fn(y, t) # if not label_input else x
+                # from collections import Counter
+                # import random
+                N, C, H, W = x.shape
+
+                # # Downsample majority class to make minority class more significant
+                # x, t = x.view(N, C, H*W).permute(0, 2, 1), t.view(N, C, H*W).permute(0, 2, 1)
+                dropout_mask = torch.ones(N, H*W, C, dtype=torch.float).to(x.device)
+
+                # for i, (x_one, t_one) in enumerate(zip(x, t)):
+                #     classes = Counter([(x_pixel.argmax().item(), t_pixel.argmax().item()) for x_pixel, t_pixel in zip(x_one, t_one)])
+                #     majority_class = max(classes, key=classes.get)
+                #     minority_class = min(classes, key=classes.get)
+                #     majority_count = classes[majority_class]
+                #     minority_count = classes[minority_class]
+                    
+                #     indices_majority_class = torch.nonzero((x_one.argmax(dim=1) == majority_class[0]) & (t_one.argmax(dim=1) == majority_class[1]), as_tuple=True)[0]
+                #     samples = random.sample(indices_majority_class.tolist(), majority_count-minority_count)
+                #     dropout_mask[i, samples, :] = 0
+                # t = t.view(N, H, W, C).permute(0, 3, 1, 2)
+
+                # dropout_mask = torch.zeros(N, H*W, C, dtype=torch.float).to(x.device)
+                # dropout_mask[:, [24, 42, 43], :] = 1
+                
+                # majority_class_mask = (t.argmax(dim=1) == majority_class)
+                # dropout_mask = torch.rand_like(majority_class_mask, dtype=torch.float) > (count_classes[minority_class] / count_classes[majority_class]).item()
+                # y = y * dropout_mask.repeat(C, 1, 1, 1).permute(1, 0, 2, 3)
+
+                dropout_mask = dropout_mask.permute(0, 2, 1).view(N, C, H, W)
+                y_masked = y * dropout_mask
+                t_masked = t * dropout_mask
+
+                loss = self.loss_fn(y_masked, t_masked) # if not label_input else x
                 if e != 0:
                     opt.zero_grad()
                     loss.backward()
@@ -713,12 +753,20 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
 
         self.progress.progress.remove_task(id_prog_e)
 
-    def _training_step_test(self, batches_test, task_id, n, max_depth=20):
+    def _training_step_test(self, batches_test, batches_train, task_id, n, max_depth=20):
         total_loss = 0
         self.n_sub_tasks_correct = 0
         task_result = []
         outputs = []
         ys = []
+        try:
+            xs = torch.cat([
+                torch.cat([batch[0] for batch in batches_train]), 
+                torch.cat([batch[0] for batch in batches_test])
+            ])
+        except:
+            xs = None
+
         for model in self.models:
             model.eval()
         if len(self.models) != 1:
@@ -729,7 +777,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
             y_prev = x
             memory_channel = torch.zeros(x.shape[0], x.shape[2], x.shape[3], dtype=torch.int).to(x.device)
             for depth, model in enumerate(self.models):
-                y = model(y_prev, memory_channel, return_prob=False if depth == len(self.models)-1 else True)
+                y = model(y_prev, xs if xs is not None else x, memory_channel, return_prob=False if depth == len(self.models)-1 else True)
                 ys.append((y, 'Depth {}'.format(depth+1)))
 
                 if depth != len(self.models)-1:
@@ -759,8 +807,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                     xytcs = [xytc for xytc, _ in xytc_batch]
                     str_visualization += visualize_image_using_emoji(*xytcs, titles=titles, return_str=True)
 
-            if self.verbose and n_correct != n_pixels:
-                str_visualization += visualize_image_using_emoji(x[0], t[0], y[0], c_decoded[0], titles=['Input', 'Target', 'Output', 'Correct'], return_str=True)
+            str_visualization += visualize_image_using_emoji(x[0], t[0], y[0], c_decoded[0], titles=['Input', 'Target', 'Output', 'Correct'], return_str=True)
 
             task_result.append({
                 'input': x[0].int().tolist(),
@@ -783,10 +830,17 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
             'n_sub_tasks_total': len(batches_test),
         }, outputs
         
-    def _test_step_test(self, batches_test, task_id, n, max_depth=20):
+    def _test_step_test(self, batches_test, batches_train, task_id, n, max_depth=20):
         task_result = []
         outputs = []
         ys = []
+        try:
+            xs = torch.cat([
+                torch.cat([batch[0] for batch in batches_train]), 
+                torch.cat([batch[0] for batch in batches_test])
+            ])
+        except:
+            xs = None
         for model in self.models:
             model.eval()
         if len(self.models) != 1:
@@ -797,7 +851,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
             y_prev = x
             memory_channel = torch.zeros(x.shape[0], x.shape[2], x.shape[3], dtype=torch.int).to(x.device)
             for depth, model in enumerate(self.models):
-                y = model(y_prev, memory_channel, return_prob=False if depth == len(self.models)-1 else True)
+                y = model(y_prev, xs if xs is not None else x, memory_channel, return_prob=False if depth == len(self.models)-1 else True)
                 ys.append((y, 'Depth {}'.format(depth+1)))
 
                 if depth != len(self.models)-1:
