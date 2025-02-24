@@ -4,3 +4,7 @@ params:
   base_path: "./data/arc-prize-2024/"
   cold_value: -1
   ignore_color: True
+  augment_test_data: False
+  color_augmentation: False
+  location_augmentation: False
+  n_color_augmentation: 32

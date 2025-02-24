@@ -32,8 +32,12 @@ def get_model_class(model_name: str):
 @dataclass
 class DataConfig:
     name: str = 'default'
-    cold_value: int = -1
+    cold_value: int = 0
     ignore_color: bool = False
+    augment_test_data: bool = False
+    color_augmentation: bool = False
+    location_augmentation: bool = False
+    n_color_augmentation: int = 32
 
 @dataclass
 class TrainConfig:
