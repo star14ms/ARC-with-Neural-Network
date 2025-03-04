@@ -56,7 +56,7 @@ def visualize_model(config: DictConfig, model=None, filter_funcs=None, **kwargs_
 
     for (batches_train, batches_test, task_id) in dataloader:
         for (x, t) in batches_train:
-            draw_graphs(model, (x, torch.zeros(x.shape[0], x.shape[2], x.shape[3])), input_names=['Input', 'Prev Changed'], output_names=['Output'], directory='./model_viz/', hide_module_functions=True, print_code_path=False)
+            draw_graphs(model, (x, x, torch.zeros(x.shape[0], x.shape[2], x.shape[3])), input_names=['Input', 'Prev Changed'], output_names=['Output'], directory='./model_viz/', hide_module_functions=True, print_code_path=False)
             break
         break
 

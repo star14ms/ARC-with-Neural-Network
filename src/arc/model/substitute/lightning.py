@@ -959,8 +959,12 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
             for x_one, y_one, t_one, c_one, c_prev_one in zip(result['x_decoded'], result['y_decoded'], result['t_decoded'], result['c_decoded'], c_prev):
                 c_one = torch.where(c_one == 1, 3, 2)
                 c_prev_one = torch.where(c_prev_one == 1, 3, 2)
-                visualize_image_using_emoji(x_one, t_one, y_one, c_one, c_prev_one, titles=['Input', 'Target', 'Output', 'Correct', 'Correct Prev'])
-                visualize_image_using_emoji(x_one, t_one, y_one, c_one, c_prev_one, titles=['Input', 'Target', 'Output', 'Correct', 'Correct Prev'], output_file=self.log_file)
+                
+                c_one_changed = torch.where(c_one != c_prev_one, 2, 0)
+                c_one_changed = torch.where((c_one_changed == 2) & (y_one == t_one), 3, c_one_changed)
+                
+                visualize_image_using_emoji(x_one, t_one, y_one, c_one, c_prev_one, c_one_changed, titles=['Input', 'Target', 'Output', 'Correct', 'Correct Prev', 'Correct Changed'])
+                visualize_image_using_emoji(x_one, t_one, y_one, c_one, c_prev_one, c_one_changed, titles=['Input', 'Target', 'Output', 'Correct', 'Correct Prev', 'Correct Changed'], output_file=self.log_file)
 
         print('Accuracy: {:.1f}% -> {:.1f}% ({:.1f}) | Corrects Kept: {} | Depth: {} {} | {} Epoch'.format(
             acc_prev*100 if model_length != 1 else 0.0, 

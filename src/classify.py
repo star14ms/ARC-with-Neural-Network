@@ -219,7 +219,7 @@ tasks_fulid = '''\
 444801d8 *f1cefba8 d4f3cd78 aba27056'''
 
 tasks_sequential_simple_line = '''\
-*d9f24cd1 *3bd67248 5c0a986e *7ddcd7ec'''
+*d9f24cd1 *3bd67248 *5c0a986e *7ddcd7ec *e9afcf9a 29c11459'''
 # 99fa7670 *d06dbe63 *f151fac 508bd3b6'''
 # *d07ae81c *e21d9049 *855e0971 *bd4472b8 *264363fd *ec883f72 *25d487eb *82819916 *6d58a25d *6e19193c *d43fd935 *1f0c79e5 *b8cdaf2b *8d510a79 *41e4d17e *623ea044 *a78176bb *ea786f4a *e40b9e2f
 
@@ -240,6 +240,7 @@ def get_filter_funcs():
             *filter_data_codes(tasks_sequential_simple_line),
             # *filter_data_codes(tasks_reasoning_abs_pixels),
             # *filter_data_codes(tasks_fulid),
+            # '28e73c20',
         ], reorder=True),
         # ARCDataClassifier.is_same_shape_f(True),
         # ARCDataClassifier.is_shape_size_in_f(start=1, stop=21),
@@ -264,7 +265,7 @@ if __name__ == '__main__':
     #     ARCDataClassifier.is_same_shape_f(True),
     # )
 
-    dataset = ARCDataset(challenges, solutions, one_hot=False, augment_data=False, augment_test_data=False, filter_funcs=filter_funcs)
+    dataset = ARCDataset(challenges, solutions, one_hot=False, augment_data=True, augment_test_data=False, n_color_augmentation=4, filter_funcs=filter_funcs)
     print(f'Data size: {len(dataset)}')
 
     # Visualize a task

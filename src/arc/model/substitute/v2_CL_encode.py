@@ -181,9 +181,9 @@ class ColorDecoder(nn.Module):
     def __init__(self, L_dim, C_dim, L_dims_decoded, emerge_color=True, L_dim_feedforward=1, C_dim_feedforward=1, dropout=0.1, bias=False):
         super().__init__()
 
-        # self.attn_VC_L = MultiheadCrossAttentionLayer(L_dim, L_dim, L_dim_feedforward, dropout=dropout, batch_first=True, bias=bias)
+        self.attn_VC_L = MultiheadCrossAttentionLayer(L_dim, L_dim, L_dim_feedforward, dropout=dropout, batch_first=True, bias=bias)
         self.attn_C_L = MultiheadCrossAttentionLayer(L_dim, L_dim, L_dim_feedforward, dropout=dropout, batch_first=True, bias=bias)
-        self.attn_L_C = MultiheadCrossAttentionLayer(C_dim, C_dim, L_dim_feedforward, dropout=dropout, batch_first=True, bias=bias)
+        # self.attn_L_C = MultiheadCrossAttentionLayer(C_dim, C_dim, L_dim_feedforward, dropout=dropout, batch_first=True, bias=bias)
 
         self.emerge_color = emerge_color
 
@@ -205,9 +205,9 @@ class ColorDecoder(nn.Module):
 
         # 6. Decode Color
         x = x.view(NS, C, L)
-        # x_VC = self.attn_VC_L(x_VC, x_VC_mem) # [VC, L] < [VC, L]
-        y = self.attn_C_L(x, x_VC_mem) # [C, L] < [VC, L] # (🟦 -> 🟧)
-        y = self.attn_L_C(y.transpose(1, 2), x_C.transpose(1, 2)).transpose(1, 2) # [L, C] < [L, C] # (🟧 -> 🟦)
+        x_VC = self.attn_VC_L(x_VC, x_VC_mem) # [VC, L] < [VC, L]
+        y = self.attn_C_L(x, x_VC) # [C, L] < [VC, L] # (🟦 -> 🟧)
+        # y = self.attn_L_C(y.transpose(1, 2), x_C.transpose(1, 2)).transpose(1, 2) # [L, C] < [L, C] # (🟧 -> 🟦)
 
         if self.emerge_color:
             y = self.attn_C_self(y.transpose(1, 2)).transpose(1, 2) # [L, C] -> [L, C] # Detect Emerging Color

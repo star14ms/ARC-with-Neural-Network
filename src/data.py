@@ -99,15 +99,15 @@ class ARCDataset(Dataset):
         def color_augment(input_tensor, output_tensor=None):
             # Count the number of unique colors
             if output_tensor is None:
-                unique_colors = set(input_tensor.numpy().ravel()) - {0}
+                unique_colors = set(input_tensor.numpy().ravel())
             else:
-                unique_colors = set(input_tensor.numpy().ravel()) | set(output_tensor.numpy().ravel()) - {0}
+                unique_colors = set(input_tensor.numpy().ravel()) | set(output_tensor.numpy().ravel())
             num_colors = len(unique_colors)
             
             # Generate possible color combinations
             new_colors = set()
             while len(new_colors) < self.n_color_augmentation - 1:
-                new_colors.add(tuple(random.sample(range(1, 10), num_colors))) # Exclude 0 (background color)
+                new_colors.add(tuple(random.sample([1, 2, 3, 4, 6, 7, 8, 9], num_colors))) # Exclude 0, 8 (background color, Often Fixed Meaning)
 
             if output_tensor is None:
                 unique_inputs = _color_augment(input_tensor, unique_colors, new_colors)
@@ -125,8 +125,10 @@ class ARCDataset(Dataset):
             for new_color in new_colors:
                 new_tensor = torch.zeros_like(tensor)
                 for i, color in enumerate(unique_colors):
-                    if color != 0:
+                    if color not in [0, 5]:
                         new_tensor[tensor == color] = new_color[i]
+                    else:
+                        new_tensor[tensor == color] = color
                 new_tensors.append(new_tensor)
             return new_tensors
             
@@ -259,8 +261,8 @@ class ARCDataModule(LightningDataModule):
         challenges_val='arc-agi_evaluation_challenges.json', 
         solutions_val='arc-agi_evaluation_solutions.json', 
         challenges_test='arc-agi_test_challenges.json',
-        batch_size_max=1, shuffle=True, augment_data=False, filter_funcs=None, cold_value=-1, ignore_color=False, 
-        num_workers=None, local_world_size=1, debug=False
+        batch_size_max=1, shuffle=True, augment_data=False, filter_funcs=None, cold_value=-1, augment_test_data=True, color_augmentation=True, location_augmentation=False, n_color_augmentation=32, ignore_color=False, 
+        num_workers=None, local_world_size=1, debug=False, 
     ):
         super().__init__()
         self.base_path = base_path
@@ -277,6 +279,10 @@ class ARCDataModule(LightningDataModule):
         self.filter_funcs = filter_funcs if filter_funcs is not None else get_filter_funcs()
         self.cold_value = cold_value
         self.ignore_color = ignore_color
+        self.augment_test_data = augment_test_data
+        self.color_augmentation = color_augmentation
+        self.location_augmentation = location_augmentation
+        self.n_color_augmentation = n_color_augmentation
 
         self.num_workers = num_workers if num_workers else suggested_max_num_workers(local_world_size=local_world_size or 1)
         self.kwargs_dataloader = {} if debug else {'num_workers': self.num_workers, 'persistent_workers': True}
@@ -285,7 +291,11 @@ class ARCDataModule(LightningDataModule):
         kwargs = {
             'cold_value': self.cold_value,
             'augment_data': self.augment_data,
-            'ignore_color': self.ignore_color
+            'ignore_color': self.ignore_color,
+            'augment_test_data': self.augment_test_data,
+            'color_augmentation': self.color_augmentation,
+            'location_augmentation': self.location_augmentation,
+            'n_color_augmentation': self.n_color_augmentation
         }
 
         # Assign train/val datasets for use in dataloaders
