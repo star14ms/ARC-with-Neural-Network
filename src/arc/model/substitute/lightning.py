@@ -11,6 +11,7 @@ import time
 from arc.model.substitute.v0_no_encode import PixelEachSubstitutorNonColorEncoding
 from arc.model.substitute.v1_C_encode import PixelEachSubstitutor as PixelEachSubstitutorColorEncoding
 from arc.model.substitute.v2_CL_encode import PixelEachSubstitutor
+# from arc.model.substitute.v3_C_decode import PixelEachSubstitutor
 from arc.preprocess import one_hot_encode
 from arc.utils.visualize import visualize_image_using_emoji, plot_xytc
 from arc.utils.print import is_notebook
@@ -474,10 +475,15 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
             return models, opt
 
         n_sub_tasks_total = sum([len(b[0]) for b in batches_train])
+        
+        total_pixels = sum([x.size(2) * x.size(3) for x, _ in batches_train])
+        total_pixels_correct = sum([sum(x_train.argmax(dim=1) == t_train.argmax(dim=1)).long().sum() for x_train, t_train in batches_train]).item()
+        accuracy0 = total_pixels_correct / total_pixels
+        answer_map0 = [torch.where(x_train.argmax(dim=1) == t_train.argmax(dim=1), 1, 0) for x_train, t_train in batches_train]
 
-        accuracy0, answer_map0 = self.get_avg_accuracy(batches_train, return_corrects_info=True)
         checkpoint0 = {
             'models': [],
+            'y_decoded_prev': None,
             'answer_map': answer_map0,
             'opt': None,
             'acc_prev': accuracy0,
@@ -517,7 +523,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
 
                 max_epoch = self.max_epochs_per_AFS if len(models) != 1 else self.max_epochs_initial
                 id_prog_e = self.progress._add_task(max_epoch, f'Epoch 0/{max_epoch}')
-                training_branch_generator = self._training_get_checkpoint_generaotr(models, batches_train, answer_map_prev, opt, acc_prev, acc_max, max_epoch, id_prog_e)
+                training_branch_generator = self._training_get_checkpoint_generator(models, batches_train, opt, acc_prev, acc_max, max_epoch, id_prog_e)
 
                 result = self._training_step_generate_checkpoints(models, opt, training_branch_generator, checkpoint, id_prog_acc, len(queue), idx_cell)
                 checkpoints_new, is_extended_correctly, acc_next, total_loss, n_sub_tasks_correct, n_acc_changed = result
@@ -532,8 +538,8 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                     
                     if self.verbose:
                         self.print_and_write([model.instance_id for model in models])
-                        self.print_and_write(is_corrected_pixels_maintained, round(acc_prev.item()*100, 2), '->')
-                        self.print_and_write([(x['is_corrected_pixels_maintained'], round(x['acc_prev'].item()*100, 2), x['n_epochs_trained'][-1]) for x in checkpoints_new])
+                        self.print_and_write(is_corrected_pixels_maintained, round(acc_prev*100, 2), '->')
+                        self.print_and_write([(x['is_corrected_pixels_maintained'], round(x['acc_prev']*100, 2), x['n_epochs_trained'][-1]) for x in checkpoints_new])
                         self.print_and_write()
 
                 if completed or (len(models) > 1 and len(queue) > 0 and acc_next >= acc_max) or (len(models) == 1 and idx_cell == len(self.params_for_each_cell)-2):
@@ -574,10 +580,13 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
         self.update_task_progress(id_prog_acc, n_queue=n_queue+len(checkpoints_new), completed=acc_max*100, description=f'  Acc {acc_max*100:.1f}%' if acc_max != 1 else f'  Acc 100%')
         n_acc_changed = 0
 
-        for results, total_loss, acc_next, n_sub_tasks_correct, opt, n_epoch_trained, answer_map, is_corrected_pixels_maintained_next in training_branch_generator:
+        for results, total_loss, acc_next, opt, n_epoch_trained in training_branch_generator:
+            answer_map = [result['c_decoded'] for result in results]
+            _n_sub_tasks_correct = sum(torch.all(result['c_decoded'] == 1) for result in results)
+            is_corrected_pixels_maintained_next = self.is_corrected_pixels_maintained(answer_map_prev, answer_map) # Prvent extension before finding the input
+
             _acc_next = acc_next
             _total_loss = total_loss
-            _n_sub_tasks_correct = n_sub_tasks_correct
             if acc_next != acc_max:
                 n_acc_changed += 1
             acc_max = max(acc_max, acc_next)
@@ -631,8 +640,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
 
         return checkpoints_new, is_extended_correctly, _acc_next, _total_loss, _n_sub_tasks_correct, n_acc_changed
 
-    def _training_get_checkpoint_generaotr(self, models: nn.Module, batches_train, answer_map_prev, opt: torch.optim.Optimizer, acc_prev: float, acc_max: float, max_epoch: int, id_prog_e: int):
-        t_batch = [batch[1] for batch in batches_train]
+    def _training_get_checkpoint_generator(self, models: list[nn.Module], batches_train: list, opt: torch.optim.Optimizer, acc_prev: float, acc_max: float, max_epoch: int, id_prog_e: int):
         acc_max = 0
         n_repeat_max_acc = 0
         loss_prev = 0
@@ -645,18 +653,11 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
             results = []
             total_loss = 0
             y_batch = []
+            y_changed = None
 
             for i, (x, t) in enumerate(batches_train):
                 y_prev = x.detach().clone()
                 memory_channel = torch.zeros(x.shape[0], x.shape[2], x.shape[3], dtype=torch.int).to(x.device)
-                
-                # N, C, _, _ = t.shape
-                # count_classes = t.transpose(1, 0).reshape(C, -1).sum(dim=1)
-                # majority_class = torch.argmax(count_classes)
-                # minority_class = torch.argmin(torch.where(count_classes > 0, count_classes, torch.tensor(float('inf')).to(count_classes.device)))
-                # weight_new = torch.ones_like(count_classes)
-                # weight_new[majority_class] = count_classes[majority_class] / count_classes[minority_class]
-                # self.loss_fn.weight = weight_new
 
                 for depth, model in enumerate(models):
                     y = model(y_prev, x, memory_channel, epoch=e, batch_idx=i, return_prob=False if depth == len(models)-1 else True)
@@ -675,42 +676,10 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                         memory_channel = y_changed
                         y_prev = y
 
-                # from collections import Counter
-                # import random
-                N, C, H, W = x.shape
-
-                # # Downsample majority class to make minority class more significant
-                # x, t = x.view(N, C, H*W).permute(0, 2, 1), t.view(N, C, H*W).permute(0, 2, 1)
-                dropout_mask = torch.ones(N, H*W, C, dtype=torch.float).to(x.device)
-
-                # for i, (x_one, t_one) in enumerate(zip(x, t)):
-                #     classes = Counter([(x_pixel.argmax().item(), t_pixel.argmax().item()) for x_pixel, t_pixel in zip(x_one, t_one)])
-                #     majority_class = max(classes, key=classes.get)
-                #     minority_class = min(classes, key=classes.get)
-                #     majority_count = classes[majority_class]
-                #     minority_count = classes[minority_class]
-                    
-                #     indices_majority_class = torch.nonzero((x_one.argmax(dim=1) == majority_class[0]) & (t_one.argmax(dim=1) == majority_class[1]), as_tuple=True)[0]
-                #     samples = random.sample(indices_majority_class.tolist(), majority_count-minority_count)
-                #     dropout_mask[i, samples, :] = 0
-                # t = t.view(N, H, W, C).permute(0, 3, 1, 2)
-
-                # dropout_mask = torch.zeros(N, H*W, C, dtype=torch.float).to(x.device)
-                # dropout_mask[:, [24, 42, 43], :] = 1
-                
-                # majority_class_mask = (t.argmax(dim=1) == majority_class)
-                # dropout_mask = torch.rand_like(majority_class_mask, dtype=torch.float) > (count_classes[minority_class] / count_classes[majority_class]).item()
-                # y = y * dropout_mask.repeat(C, 1, 1, 1).permute(1, 0, 2, 3)
-
-                dropout_mask = dropout_mask.permute(0, 2, 1).view(N, C, H, W)
-                y_masked = y * dropout_mask
-                t_masked = t * dropout_mask
-
-                loss = self.loss_fn(y_masked, t_masked) # if not label_input else x
-                if e != 0:
-                    opt.zero_grad()
-                    loss.backward()
-                    opt.step()
+                loss = self.loss_fn(y, t) # if not label_input else x
+                opt.zero_grad()
+                loss.backward()
+                opt.step()
 
                 x_decoded = torch.argmax(x, dim=1).long()
                 y_decoded = torch.argmax(y, dim=1).long()
@@ -727,10 +696,10 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                 total_loss += loss.sum()
                 y_batch.append(y)
 
-            acc_next, n_sub_tasks_correct = self.get_avg_accuracy(zip(y_batch, t_batch), return_n_sub_tasks_correct=True)
-            n_repeat_max_acc = 0 if acc_next > acc_max else (n_repeat_max_acc + 1)
+            acc_total_next = sum([result['c_decoded'].sum().item() for result in results]) / sum(result['x_decoded'].size(1) * result['x_decoded'].size(2) for result in results)
+            n_repeat_max_acc = 0 if acc_total_next > acc_max else (n_repeat_max_acc + 1)
             self.update_task_progress(id_prog_e, e+1, loss=loss.sum(), depth=len(models), total=max_epoch, description=f'Epoch {e+1}/{max_epoch}')
-            acc_max = max(acc_max, acc_next)
+            acc_max = max(acc_max, acc_total_next)
 
             if loss_prev == total_loss:
                 n_times_constant_loss += 1
@@ -738,22 +707,82 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                 n_times_constant_loss = 0
                 loss_prev = total_loss
                 
-            if ((len(models) != 1 or acc_prev < acc_next) and n_repeat_max_acc > self.n_repeat_max_acc_threshold):
+            if ((len(models) != 1 or acc_prev < acc_total_next) and n_repeat_max_acc > self.n_repeat_max_acc_threshold):
                 break
 
-            if (acc_next == 1 or total_loss < self.train_loss_threshold_to_stop or (acc_prev < acc_next and len(models) < self.max_depth)) and (e == max_epoch -1 or not reach_perfect):
-                answer_map = [result['c_decoded'] for result in results]
-                is_corrected_pixels_maintained_next = self.is_corrected_pixels_maintained(answer_map_prev, answer_map) # Prvent extension before finding the input
+            if (acc_total_next == 1 or total_loss < self.train_loss_threshold_to_stop or (acc_prev < acc_total_next and len(models) < self.max_depth)) and (e == max_epoch -1 or not reach_perfect):
+                yield results, total_loss, acc_total_next, opt, e+1
 
-                yield results, total_loss, acc_next, n_sub_tasks_correct, opt, e+1, answer_map, is_corrected_pixels_maintained_next
-
-                if acc_next == 1 and not reach_perfect: # or (e == 0 and is_corrected_pixels_maintained_next)
+                if acc_total_next == 1 and not reach_perfect: # or (e == 0 and is_corrected_pixels_maintained_next)
                     reach_perfect = True
                     max_epoch = e + self.epochs_after_best
 
         self.progress.progress.remove_task(id_prog_e)
 
-    def _training_step_test(self, batches_test, batches_train, task_id, n, max_depth=20):
+    def _training_get_checkpoint_generator_fast(self, models: list[nn.Module], batches_train: list, opt: torch.optim.Optimizer, acc_prev: float, acc_max: float, max_epoch: int, id_prog_e: int):
+        acc_max = 0
+        max_depth_reached = 0
+        n_iters_perfect = 0
+
+        for e in range(max_epoch):
+            n_task_correct = 0
+            results = []
+            total_loss = 0
+
+            for i, (x, t) in enumerate(batches_train):
+                y_prev = x.clone()
+                
+                acc_inital = (x.argmax(dim=1) == t.argmax(dim=1)).sum().item() / (x_size:= x.size(2) * x.size(3))
+                acc_max = acc_inital
+
+                for depth in range(self.max_depth):
+                    if depth != 0:
+                        y_prev = y
+                        max_indices = torch.argmax(y_prev, dim=1)
+                        y_prev = torch.scatter(torch.zeros_like(y_prev), 1, max_indices.unsqueeze(1), 1)
+                    
+                    y = models[0](y_prev) # [N, C, H, W]
+
+                    n_pixel_correct = (y.argmax(dim=1) == t.argmax(dim=1)).sum().item()
+                    acc = n_pixel_correct / x_size
+
+                    if acc < acc_max or n_pixel_correct == x_size or torch.all(y_prev.argmax(dim=1) == y.argmax(dim=1)):
+                        break
+
+                    if acc > acc_max:
+                        acc_max = acc
+                        
+                max_depth_reached = max(max_depth_reached, depth)
+                loss = self.loss_fn(y, t)
+                opt.zero_grad()
+                loss.backward()
+                opt.step()
+
+                x_decoded = torch.argmax(x, dim=1).long()
+                y_decoded = torch.argmax(y, dim=1).long()
+                t_decoded = torch.argmax(t, dim=1).long()
+                c_decoded = torch.where(y_decoded == t_decoded, 1, 0)
+                results.append({'x_decoded': x_decoded, 'y_decoded': y_decoded, 't_decoded': t_decoded, 'c_decoded': c_decoded})
+                
+                total_loss += loss.sum()
+
+                if n_pixel_correct == x_size:
+                    n_task_correct += 1
+
+            acc_total_next = sum([result['c_decoded'].sum().item() for result in results]) / sum(result['x_decoded'].size(1) * result['x_decoded'].size(2) for result in results)
+
+            # if acc_prev < acc_total_next:
+            #     yield results, total_loss, acc_total_next, opt, e+1
+
+            self.update_task_progress(id_prog_e, e+1, loss=loss.sum(), depth=max_depth_reached, total=max_epoch, description=f'Epoch {e+1}/{max_epoch}')
+            
+            if n_task_correct == len(batches_train):
+                yield results, total_loss, acc_total_next, opt, e+1
+                break
+
+        self.progress.progress.remove_task(id_prog_e)
+
+    def _training_step_test(self, batches_test, batches_train, task_id, n):
         total_loss = 0
         self.n_sub_tasks_correct = 0
         task_result = []
@@ -770,7 +799,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
         for model in self.models:
             model.eval()
         if len(self.models) != 1:
-            for i in range(max_depth-len(self.models)):
+            for i in range(self.max_depth-len(self.models)):
                 self.models.append(self.models[-1])
 
         for i, (x, t) in enumerate(batches_test):
@@ -830,7 +859,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
             'n_sub_tasks_total': len(batches_test),
         }, outputs
         
-    def _test_step_test(self, batches_test, batches_train, task_id, n, max_depth=20):
+    def _test_step_test(self, batches_test, batches_train, task_id, n):
         task_result = []
         outputs = []
         ys = []
@@ -844,7 +873,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
         for model in self.models:
             model.eval()
         if len(self.models) != 1:
-            for i in range(max_depth-len(self.models)):
+            for i in range(self.max_depth-len(self.models)):
                 self.models.append(self.models[-1])
 
         for i, (x, _) in enumerate(batches_test):
@@ -909,38 +938,6 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
         return time.perf_counter() - self.time_task_start
 
     @staticmethod
-    def get_avg_accuracy(batches, return_n_sub_tasks_correct=False, return_corrects_info=False):
-        accuracy_total = 0
-        data_total = 0
-        n_sub_tasks_correct = 0
-        c_decoded_batch = []
-
-        for (y, t) in batches:
-            y_decoded = y.argmax(dim=1).long()
-            t_decoded = t.argmax(dim=1).long()
-            c_decoded = torch.where(y_decoded == t_decoded, 1, 0)
-
-            if return_corrects_info:
-                c_decoded_batch.append(c_decoded)
-
-            accuarcy_each = torch.sum(c_decoded, dim=(1, 2)) / y.argmax(dim=1)[0].numel() # [N, C, H, W]
-            accuracy_total += torch.sum(accuarcy_each)
-            data_total += len(y)
-            n_sub_tasks_correct += torch.sum(torch.where(accuarcy_each == 1, 1, 0))
-
-        avg_accuracy = accuracy_total / data_total
-
-        results = [avg_accuracy]
-        if return_n_sub_tasks_correct:
-            results.append(n_sub_tasks_correct)
-        if return_corrects_info:
-            results.append(c_decoded_batch)
-
-        if len(results) == 1:
-            return results[0]
-        return results
-
-    @staticmethod
     def is_corrected_pixels_maintained(answer_map_prev, answer_map):
         for correct_previous_batch, correct_current_batch in zip(answer_map_prev, answer_map):
             if torch.any((correct_previous_batch - correct_current_batch) > 0):
@@ -963,8 +960,8 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                 c_one_changed = torch.where(c_one != c_prev_one, 2, 0)
                 c_one_changed = torch.where((c_one_changed == 2) & (y_one == t_one), 3, c_one_changed)
                 
-                visualize_image_using_emoji(x_one, t_one, y_one, c_one, c_prev_one, c_one_changed, titles=['Input', 'Target', 'Output', 'Correct', 'Correct Prev', 'Correct Changed'])
-                visualize_image_using_emoji(x_one, t_one, y_one, c_one, c_prev_one, c_one_changed, titles=['Input', 'Target', 'Output', 'Correct', 'Correct Prev', 'Correct Changed'], output_file=self.log_file)
+                visualize_image_using_emoji(x_one, t_one, y_one, c_one, c_one_changed, titles=['Input', 'Target', 'Output', 'Correct', 'Correct Changed'])
+                visualize_image_using_emoji(x_one, t_one, y_one, c_one, c_one_changed, titles=['Input', 'Target', 'Output', 'Correct', 'Correct Changed'], output_file=self.log_file)
 
         print('Accuracy: {:.1f}% -> {:.1f}% ({:.1f}) | Corrects Kept: {} | Depth: {} {} | {} Epoch'.format(
             acc_prev*100 if model_length != 1 else 0.0, 

@@ -90,22 +90,28 @@ class PixelAbsoluteVectorExtractor(nn.Module):
 
 
 class PixelVectorExtractor(nn.Module):
-    def __init__(self, n_range_search, W_kernel_max, H_kernel_max, vec_abs=True, W_max=30, H_max=30, pad_class_initial=0, pad_n_head=None, pad_dim_feedforward=1, dropout=0.1, pad_num_layers=1, bias=False, n_class=10):
+    def __init__(self, n_range_search, W_kernel_max, H_kernel_max, vec_abs=True, W_max=30, H_max=30, pad_class_initial=-1, pad_n_head=None, pad_dim_feedforward=1, dropout=0.1, pad_num_layers=1, memory_channel=False, bias=False, n_class=10):
         super().__init__()
         self.vec_abs = vec_abs
+        self.memory_channel = memory_channel
+        self.n_dim = (n_range_search*2+1)**2 + (0 if not vec_abs else W_max*H_max)
         self.extract_rel_vec = PixelRelativeVectorExtractor(n_range_search, W_kernel_max, H_kernel_max, pad_class_initial, pad_n_head=pad_n_head, pad_dim_feedforward=pad_dim_feedforward, dropout=dropout, pad_num_layers=pad_num_layers, bias=bias, n_class=n_class)
 
         if vec_abs:
             self.extract_abs_vec = PixelAbsoluteVectorExtractor(W_max=W_max, H_max=H_max)
 
-    def forward(self, x, memory_channel, output_shape=None):
+    def forward(self, x, memory_channel=None, output_shape=None):
         if output_shape is None:
             output_shape = x.shape[2:]
 
         # attach memory_channel to x
-        memory_channel = memory_channel.unsqueeze(1)
-        x_extended = torch.cat([x, memory_channel], dim=1)
-        x_vec = self.extract_rel_vec(x_extended) # (29 + 1 + 29)**2 = 2704
+        if self.memory_channel:
+            memory_channel = memory_channel.unsqueeze(1)
+            x_extended = torch.cat([x, memory_channel], dim=1)
+            x_vec = self.extract_rel_vec(x_extended) # (29 + 1 + 29)**2 = 2704
+        else:
+            x_extended = x
+            x_vec = self.extract_rel_vec(x)
 
         if self.vec_abs:
             x_abs = self.extract_abs_vec(x_extended, output_shape) # 30**2 = 900
