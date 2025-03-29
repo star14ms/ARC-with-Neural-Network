@@ -132,7 +132,7 @@ class Encoder(nn.Module):
 
 
 class Reasoner(nn.Module):
-    def __init__(self, VC_dim, VL_dim, L_num_layers=1, L_n_head=None, L_dim_feedforward=1, C_num_layers=1, C_n_head=None, C_dim_feedforward=1, dropout=0.1, bias=False):
+    def __init__(self, VC_dim, VL_dim, L_num_layers=1, L_n_head=None, L_dim_feedforward=1, C_num_layers=1, C_n_head=None, C_dim_feedforward=1, x_inference=True, dropout=0.1, bias=False):
         super().__init__()
 
         self.attn_VL_self = nn.TransformerEncoder(
@@ -146,7 +146,10 @@ class Reasoner(nn.Module):
             enable_nested_tensor=False,
         )
 
-    def forward(self, mem):
+        if x_inference:
+            self.attn_C_inference = MultiheadCrossAttentionLayer(VC_dim, VC_dim, L_dim_feedforward, dropout=dropout, batch_first=True, bias=bias)
+
+    def forward(self, mem, x_inference=None):
         NS, VC, VL = mem.shape
 
         # In     Out
@@ -159,6 +162,9 @@ class Reasoner(nn.Module):
         # 🟦🟨🟨  🟦🟨🟨
 
         # 3. Attention Across Location and Color
+        if x_inference is not None:
+            mem = self.attn_C_inference(mem.transpose(1, 2), x_inference.repeat(NS, 1, 1).transpose(1, 2)).transpose(1, 2) # [VC, VL] < [VC, VL]
+
         mem = self.attn_VL_self(mem) # [VC, VL] < [VC, VL]
         mem = self.attn_VC_self(mem.transpose(1, 2)).transpose(1, 2) # [VL, VC] < [VL, VC]
 
@@ -258,6 +264,16 @@ class PixelEachSubstitutor(nn.Module):
         super().__init__()
         assert n_range_search != -1 and W_kernel_max >= 1 + 2*n_range_search and H_kernel_max >= 1 + 2*n_range_search
         self.memory_channel = memory_channel
+        
+        self.inferer = StateAnalyst(
+            in_channels=n_class, 
+            out_channels=10, 
+            kernel_size=3, 
+            dim_hidden=32, 
+            dim_output=10, 
+            x_size_max=15*15,
+            VC_dim=C_dims_encoded[-1],
+        )
 
         self.abstractor = PixelVectorExtractor(
             n_range_search=n_range_search,
@@ -307,7 +323,7 @@ class PixelEachSubstitutor(nn.Module):
             bias=False,
         )
 
-    def forward(self, x, xs=None, memory_channel=None, t=None, return_prob=False, **kwargs):
+    def forward(self, x, xs=None, memory_channel=None, t=None, return_prob=False, return_observation=False, **kwargs):
         N, C, H, W = x.shape
 
         # Task: 22168020
@@ -319,12 +335,14 @@ class PixelEachSubstitutor(nn.Module):
         # 🔳🔳🔳  🟦🟦🟦  🟦🟦🟦  🔳🔳🔳
         # 🔳🔳🟧  🟦🟦🟦  🟦🟦🟦  🔳🔳🟧
         # 🔳🟩🟩  🟦🟨🟨  🟦🟨🟨  🔳🟩🟩 
+        
+        x_inference = self.inferer(x) # [N, C, V]
 
         x = self.abstractor(x, memory_channel) # [N*H*W, C+1, H_max*W_max]
         C = x.shape[1]
 
         x_VC_VL, x_VC_L, x_VC, x_C = self.encoder(x, xs)
-        mem = self.reasoner(x_VC_VL)
+        mem = self.reasoner(x_VC_VL, x_inference)
         y = self.decoder(x, mem, x_VC_VL, x_VC_L, x_VC, x_C)
         
         if self.memory_channel:
@@ -334,5 +352,40 @@ class PixelEachSubstitutor(nn.Module):
         if return_prob:
             y = y.transpose(1, 0).softmax(dim=0).transpose(1, 0) # [NS, C_prob]
 
-        return y
+        if return_observation:
+            return x, y
+        else:
+            return y
 
+
+
+class StateAnalyst(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=3, dim_hidden=32, dim_output=8, x_size_max=15*15, VC_dim=3):
+        super().__init__()
+        self.x_size_max = x_size_max
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, padding=1)
+        
+        self.ff = nn.Sequential(
+            nn.Flatten(start_dim=1),
+            nn.Linear(x_size_max, dim_hidden),
+            nn.ReLU(),
+            nn.Linear(dim_hidden, dim_output),
+        )
+        
+        self.encoder_C = nn.Sequential(
+            nn.Linear(in_channels, VC_dim),
+            nn.ReLU(),
+        )
+
+    def forward(self, x):
+        N, C, H, W = x.shape
+        y = torch.zeros([N, 10, self.x_size_max])
+        x = self.conv(x)
+
+        x = x.flatten(2)
+        y[:, :, :H*W] = x
+
+        y = self.ff(y.view(N*C, -1)).view(N, C, -1)
+        y = self.encoder_C(y.transpose(1, 2)).transpose(1, 2)
+
+        return y
