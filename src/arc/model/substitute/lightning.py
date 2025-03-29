@@ -15,6 +15,7 @@ from arc.model.substitute.v2_CL_encode import PixelEachSubstitutor
 from arc.preprocess import one_hot_encode
 from arc.utils.visualize import visualize_image_using_emoji, plot_xytc
 from arc.utils.print import is_notebook
+from arc.utils.modify_targets import convert_targets, create_mask
 from classify import ARCDataClassifier
 
 from rich import get_console
@@ -596,8 +597,8 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                 for j in range(len(checkpoints_new)-1, -1, -1):
                     if not checkpoints_new[j]['is_corrected_pixels_maintained']:
                         del checkpoints_new[j]
-                        
-            if acc_next == 1 or (acc_next >= acc_max and ((len(models) > 2 and is_corrected_pixels_maintained) or is_corrected_pixels_maintained_next) and len(models) < self.max_depth): 
+
+            if (acc_next == 1 or (acc_next >= acc_max) and len(models) < self.max_depth): 
                 acc_max = max(acc_max, acc_next)
 
                 checkpoint_kwargs = {
@@ -640,7 +641,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
 
         return checkpoints_new, is_extended_correctly, _acc_next, _total_loss, _n_sub_tasks_correct, n_acc_changed
 
-    def _training_get_checkpoint_generator(self, models: list[nn.Module], batches_train: list, opt: torch.optim.Optimizer, acc_prev: float, acc_max: float, max_epoch: int, id_prog_e: int):
+    def _training_get_checkpoint_generator_slow(self, models: list[nn.Module], batches_train: list, opt: torch.optim.Optimizer, acc_prev: float, acc_max: float, max_epoch: int, id_prog_e: int):
         acc_max = 0
         n_repeat_max_acc = 0
         loss_prev = 0
@@ -653,6 +654,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
             results = []
             total_loss = 0
             y_batch = []
+            x_obs_batch = []
             y_changed = None
 
             for i, (x, t) in enumerate(batches_train):
@@ -660,7 +662,8 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                 memory_channel = torch.zeros(x.shape[0], x.shape[2], x.shape[3], dtype=torch.int).to(x.device)
 
                 for depth, model in enumerate(models):
-                    y = model(y_prev, x, memory_channel, epoch=e, batch_idx=i, return_prob=False if depth == len(models)-1 else True)
+                    is_last_depth = False if depth == len(models)-1 else True
+                    x_obs, y = model(y_prev, x, memory_channel, epoch=e, batch_idx=i, return_prob=is_last_depth, return_observation=True)
 
                     if depth != len(models)-1:
                         max_indices = torch.argmax(y, dim=1)
@@ -676,11 +679,6 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                         memory_channel = y_changed
                         y_prev = y
 
-                loss = self.loss_fn(y, t) # if not label_input else x
-                opt.zero_grad()
-                loss.backward()
-                opt.step()
-
                 x_decoded = torch.argmax(x, dim=1).long()
                 y_decoded = torch.argmax(y, dim=1).long()
                 t_decoded = torch.argmax(t, dim=1).long()
@@ -693,12 +691,61 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
 
                 c_decoded = torch.where(y_decoded == t_decoded, 1, 0)
                 results.append({'x_decoded': x_decoded, 'y_decoded': y_decoded, 't_decoded': t_decoded, 'c_decoded': c_decoded})
-                total_loss += loss.sum()
                 y_batch.append(y)
+                x_obs_batch.append(x_obs)
+
+            ys_flatten = torch.cat([y.permute(0, 2, 3, 1).view(y.size(0)*y.size(2)*y.size(3), -1) for y in y_batch]) # [N*H*W, V]
+            ts_flatten = torch.cat([t.permute(0, 2, 3, 1).view(t.size(0)*t.size(2)*t.size(3), -1) for _, t in batches_train]) # [N*H*W, 1]
+
+            x_obs_batch = torch.cat([x_obs.argmax(dim=1) for x_obs in x_obs_batch]) # [N, V]
+            # xs_flatten_decoded = torch.cat([x.permute(0, 2, 3, 1).view(x.size(0)*x.size(2)*x.size(3), -1).argmax(dim=1, keepdim=True) for x, _ in batches_train]) # [N*H*W, 1]
+            ys_flatten_decoded = ys_flatten.argmax(dim=1, keepdim=True) # [N*H*W, 1]
+            ts_flatten_decoded = ts_flatten.argmax(dim=1, keepdim=True) # [N*H*W, 1]
+
+            # mask = create_mask(x_obs_batch, xs_flatten_decoded, ys_flatten_decoded, ts_flatten_decoded)
+            ts_flatten_modified_decoded = convert_targets(x_obs_batch, ys_flatten_decoded, ts_flatten_decoded)
+            ts_flatten_modified = torch.zeros_like(ts_flatten)
+            ts_flatten_modified = torch.scatter(ts_flatten_modified, 1, ts_flatten_modified_decoded, 1)
+
+            # if torch.any(mask == 0):
+            #     mask_index = 0
+            #     for x_obs, y, (x, t) in zip(x_obs_batch, y_batch, batches_train):
+            #         x_size = x.size(2) * x.size(3)
+            #         visualize_image_using_emoji(x, y, t, torch.where(mask[mask_index:mask_index+x_size].view(x.size(2), x.size(3)) == 1, 3, 2).squeeze(1), titles=['Input', 'Output', 'Target', 'Mask'])
+            #         mask_index += x_size
+
+            new_correct_pixels = False
+            for result in results:
+                x_decoded = result['x_decoded']
+                y_decoded = result['y_decoded']
+                t_decoded = result['t_decoded']
+
+                if torch.any(((y_decoded == t_decoded).long() - (t_decoded == x_decoded).long()) == 1):
+                    new_correct_pixels = True
+
+            if new_correct_pixels:
+                mask_index = 0
+                for result in results:
+                    x_decoded = result['x_decoded']
+                    y_decoded = result['y_decoded']
+                    t_decoded = result['t_decoded']
+                    x_size = x_decoded.size(1) * x_decoded.size(2)
+                    c_decoded_modified = torch.where(ts_flatten_modified_decoded[mask_index:mask_index+x_size].view(x_decoded.size(1), x_decoded.size(2)) == y_decoded, 3, 2).squeeze(1)
+                    mask_image = torch.where(mask[mask_index:mask_index+x_size].view(x_decoded.size(1), x_decoded.size(2)) == 1, 3, 2).squeeze(1)
+                    # print(mask_index, x_size)
+                    mask_index += x_size
+                    visualize_image_using_emoji(y_decoded, t_decoded, mask_image, c_decoded_modified, titles=['Output', 'Target', 'Mask', 'Correct Modified'])
+                # breakpoint()
+
+            loss = self.loss_fn(ys_flatten, ts_flatten_modified) # if not label_input else x
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+            total_loss += loss.sum()
 
             acc_total_next = sum([result['c_decoded'].sum().item() for result in results]) / sum(result['x_decoded'].size(1) * result['x_decoded'].size(2) for result in results)
             n_repeat_max_acc = 0 if acc_total_next > acc_max else (n_repeat_max_acc + 1)
-            self.update_task_progress(id_prog_e, e+1, loss=loss.sum(), depth=len(models), total=max_epoch, description=f'Epoch {e+1}/{max_epoch}')
+            self.update_task_progress(id_prog_e, e+1, loss=total_loss, depth=len(models), total=max_epoch, description=f'Epoch {e+1}/{max_epoch}')
             acc_max = max(acc_max, acc_total_next)
 
             if loss_prev == total_loss:
@@ -719,7 +766,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
 
         self.progress.progress.remove_task(id_prog_e)
 
-    def _training_get_checkpoint_generator_fast(self, models: list[nn.Module], batches_train: list, opt: torch.optim.Optimizer, acc_prev: float, acc_max: float, max_epoch: int, id_prog_e: int):
+    def _training_get_checkpoint_generator(self, models: list[nn.Module], batches_train: list, opt: torch.optim.Optimizer, acc_prev: float, acc_max: float, max_epoch: int, id_prog_e: int):
         acc_max = 0
         max_depth_reached = 0
         n_iters_perfect = 0
@@ -728,6 +775,8 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
             n_task_correct = 0
             results = []
             total_loss = 0
+            y_batch = []
+            x_obs_batch = []
 
             for i, (x, t) in enumerate(batches_train):
                 y_prev = x.clone()
@@ -741,7 +790,7 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                         max_indices = torch.argmax(y_prev, dim=1)
                         y_prev = torch.scatter(torch.zeros_like(y_prev), 1, max_indices.unsqueeze(1), 1)
                     
-                    y = models[0](y_prev) # [N, C, H, W]
+                    x_obs, y = models[0](y_prev, return_observation=True) # [N, C, H, W]
 
                     n_pixel_correct = (y.argmax(dim=1) == t.argmax(dim=1)).sum().item()
                     acc = n_pixel_correct / x_size
@@ -753,21 +802,60 @@ class PixelEachSubstitutorRepeatBase(PixelEachSubstitutorBase):
                         acc_max = acc
                         
                 max_depth_reached = max(max_depth_reached, depth)
-                loss = self.loss_fn(y, t)
-                opt.zero_grad()
-                loss.backward()
-                opt.step()
 
                 x_decoded = torch.argmax(x, dim=1).long()
                 y_decoded = torch.argmax(y, dim=1).long()
                 t_decoded = torch.argmax(t, dim=1).long()
                 c_decoded = torch.where(y_decoded == t_decoded, 1, 0)
                 results.append({'x_decoded': x_decoded, 'y_decoded': y_decoded, 't_decoded': t_decoded, 'c_decoded': c_decoded})
-                
-                total_loss += loss.sum()
+                y_batch.append(y)
+                x_obs_batch.append(x_obs)
 
                 if n_pixel_correct == x_size:
                     n_task_correct += 1
+                    
+            ys_flatten = torch.cat([y.permute(0, 2, 3, 1).view(y.size(0)*y.size(2)*y.size(3), -1) for y in y_batch]) # [N*H*W, V]
+            ts_flatten = torch.cat([t.permute(0, 2, 3, 1).view(t.size(0)*t.size(2)*t.size(3), -1) for _, t in batches_train]) # [N*H*W, 1]
+
+            x_obs_batch = torch.cat([x_obs.argmax(dim=1) for x_obs in x_obs_batch]) # [N, V]
+            xs_flatten_decoded = torch.cat([x.permute(0, 2, 3, 1).view(x.size(0)*x.size(2)*x.size(3), -1).argmax(dim=1, keepdim=True) for x, _ in batches_train]) # [N*H*W, 1]
+            ys_flatten_decoded = ys_flatten.argmax(dim=1, keepdim=True) # [N*H*W, 1]
+            ts_flatten_decoded = ts_flatten.argmax(dim=1, keepdim=True) # [N*H*W, 1]
+            mask = create_mask(x_obs_batch, xs_flatten_decoded, ys_flatten_decoded, ts_flatten_decoded)
+
+            ts_flatten_modified_decoded = convert_targets(x_obs_batch, ys_flatten_decoded, ts_flatten_decoded)
+            ts_flatten_modified = torch.zeros_like(ts_flatten)
+            ts_flatten_modified = torch.scatter(ts_flatten_modified, 1, ts_flatten_modified_decoded, 1)
+            
+            new_correct_pixels = False
+            for result in results:
+                x_decoded = result['x_decoded']
+                y_decoded = result['y_decoded']
+                t_decoded = result['t_decoded']
+
+                if torch.any(((y_decoded == t_decoded).long() - (t_decoded == x_decoded).long()) == 1):
+                    new_correct_pixels = True
+
+            if new_correct_pixels:
+                mask_index = 0
+                for result in results:
+                    x_decoded = result['x_decoded']
+                    y_decoded = result['y_decoded']
+                    t_decoded = result['t_decoded']
+                    x_size = x_decoded.size(1) * x_decoded.size(2)
+                    c_decoded_modified = torch.where(ts_flatten_modified_decoded[mask_index:mask_index+x_size].view(x_decoded.size(1), x_decoded.size(2)) == y_decoded, 3, 2).squeeze(1)
+                    mask_image = torch.where(mask[mask_index:mask_index+x_size].view(x_decoded.size(1), x_decoded.size(2)) == 1, 3, 2).squeeze(1)
+                    # print(mask_index, x_size)
+                    mask_index += x_size
+                    visualize_image_using_emoji(y_decoded, t_decoded, mask_image, c_decoded_modified, titles=['Output', 'Target', 'Mask', 'Correct Modified'])
+                # breakpoint()
+
+
+            loss = self.loss_fn(ys_flatten, ts_flatten_modified)
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+            total_loss += loss.sum()
 
             acc_total_next = sum([result['c_decoded'].sum().item() for result in results]) / sum(result['x_decoded'].size(1) * result['x_decoded'].size(2) for result in results)
 
