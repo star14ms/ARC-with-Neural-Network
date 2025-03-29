@@ -1,6 +1,7 @@
 name: arc-prize-2024
 channels:
   - pytorch
+  - bioconda
   - conda-forge
   - defaults
 dependencies:
@@ -133,22 +134,28 @@ dependencies:
       - antlr4-python3-runtime==4.9.3
       - charset-normalizer==3.3.2
       - grpcio==1.64.1
+      - h5py==3.12.1
       - hydra-core==1.3.2
-      - kaggle==1.6.14
+      - kaggle==1.6.17
       - markdown==3.6
       - markdown-it-py==3.0.0
       - mdurl==0.1.2
+      - nir==1.0.4
+      - nirtorch==1.0
       - omegaconf==2.3.0
-      - pip==24.1.2
+      - pip==24.2
       - protobuf==4.25.3
+      - pulp==2.9.0
       - python-dateutil==2.9.0.post0
       - python-graphviz==0.20.3
       - python-slugify==8.0.4
       - requests==2.32.3
       - rich==13.7.1
+      - snntorch==0.9.1
       - tensorboard==2.17.0
       - tensorboard-data-server==0.7.2
       - text-unidecode==1.3
       - thop==0.1.1-2209072238
+      - torchview==0.2.6
       - werkzeug==3.0.3
 prefix: /Users/minseo/anaconda3/envs/arc-prize-2024
