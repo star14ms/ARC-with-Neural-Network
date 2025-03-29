@@ -219,12 +219,15 @@ tasks_fulid = '''\
 444801d8 *f1cefba8 d4f3cd78 aba27056'''
 
 tasks_sequential_simple_line = '''\
-*d9f24cd1 *3bd67248 *5c0a986e *7ddcd7ec *e9afcf9a 29c11459'''
+*d9f24cd1 3bd67248 *5c0a986e *7ddcd7ec *e9afcf9a *29c11459'''
 # 99fa7670 *d06dbe63 *f151fac 508bd3b6'''
 # *d07ae81c *e21d9049 *855e0971 *bd4472b8 *264363fd *ec883f72 *25d487eb *82819916 *6d58a25d *6e19193c *d43fd935 *1f0c79e5 *b8cdaf2b *8d510a79 *41e4d17e *623ea044 *a78176bb *ea786f4a *e40b9e2f
 
 tasks_reasoning_abs_pixels = '''\
 aabf363d'''
+
+tasks_sequential_complex_line = '''\
+a2fd1cf0'''
 
 def filter_data_codes(data_codes: list[str]):
     return tuple(filter(lambda x: len(x) == 8, data_codes.split()))
@@ -237,7 +240,8 @@ def get_filter_funcs():
             # *filter_data_codes(tasks_fill_1),
             # *filter_data_codes(tasks_fill_2),
             # *filter_data_codes(tasks_solvable_with_3x3_kernel),
-            *filter_data_codes(tasks_sequential_simple_line),
+            # *filter_data_codes(tasks_sequential_simple_line),
+            *filter_data_codes(tasks_sequential_complex_line),
             # *filter_data_codes(tasks_reasoning_abs_pixels),
             # *filter_data_codes(tasks_fulid),
             # '28e73c20',

@@ -1,6 +1,8 @@
 import torch
 from torch import nn
 from tqdm import tqdm
+import sys
+sys.path.append('./src/')
 
 from arc.constants import get_challenges_solutions_filepath
 from classify import ARCDataClassifier

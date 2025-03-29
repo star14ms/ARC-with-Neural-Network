@@ -11,12 +11,12 @@ reward_map = torch.tensor([
     [-1, -1, -1],
     [-1, -10, 10]
 ])
-actions_masks = torch.tensor([
+action_mask = torch.tensor([
     [[0, 1, 0, 1], [1, 1, 0, 1], [1, 0, 0, 1]],
     [[0, 1, 1, 1], [1, 1, 1, 1], [1, 0, 1, 1]],
     [[0, 1, 1, 0], [1, 1, 1, 0], [1, 0, 1, 0]],
 ], dtype=torch.float32)
-actions_probabilities = actions_masks / actions_masks.sum(dim=-1, keepdim=True)
+actions_probabilities = action_mask / action_mask.sum(dim=-1, keepdim=True)
 
 action_map = ['Left', 'Right', 'Up', 'Down']
 
@@ -53,11 +53,11 @@ def train(Q_table, actions_probabilities, reward_map, alpha, gamma, n_iteration=
     return Q_table
 
 
-def test(Q_table, action_map, actions_masks, max_iteration=30):
+def test(Q_table, action_map, action_mask, max_iteration=30):
     # Test
     state = [0, 0]
     for _ in range(max_iteration):
-        Q_table *= actions_masks
+        Q_table *= action_mask
         action = torch.argmax(Q_table[*state])
         print(state, action_map[action])
         if action == 0:
@@ -99,4 +99,4 @@ if __name__ == '__main__':
     print('\nQ table after training', Q_table.reshape(-1, 4), sep='\n', end='\n\n')
     print('Q table change', Q_table.reshape(-1, 4) - Q_table_inital, sep='\n', end='\n\n')
 
-    test(Q_table, action_map, actions_masks, max_iteration)
+    test(Q_table, action_map, action_mask, max_iteration)
