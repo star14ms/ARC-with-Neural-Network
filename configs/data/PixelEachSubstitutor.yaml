@@ -5,6 +5,6 @@ params:
   cold_value: 0
   ignore_color: False
   augment_test_data: False
-  color_augmentation: False
+  color_augmentation: True
   location_augmentation: False
   n_color_augmentation: 32
